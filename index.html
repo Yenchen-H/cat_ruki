@@ -214,9 +214,9 @@ td.ok{color:var(--green)}
   --glass: rgba(255,255,255,.08);
   --glass-strong: rgba(255,255,255,.14);
   --glass-border: rgba(255,255,255,.18);
-  --text-main: #eef2ff;
-  --text-soft: #b8c0dd;
-  --text-dim: #8d99bf;
+  --text-main: #f8fbff;
+  --text-soft: #d7def3;
+  --text-dim: #b9c4e3;
   --accent: #c4b5fd;
   --accent-2: #7dd3fc;
   --accent-3: #f9a8d4;
@@ -260,7 +260,7 @@ header{
   box-shadow: 0 10px 40px rgba(0,0,0,.22);
 }
 .header-title{color:#f8faff; letter-spacing:.5px; text-shadow:0 0 20px rgba(196,181,253,.18)}
-.header-sub,.header-date{color:var(--text-dim)}
+.header-sub,.header-date{color:var(--text-soft)}
 .sync-badge,.btn-admin,nav, .card, .record-item, .stat-chip, .modal, .lock-box, .reminder-item{
   backdrop-filter: blur(16px) saturate(140%);
 }
@@ -293,9 +293,10 @@ nav{
 nav button{
   border-radius:14px;
   padding:12px 16px;
-  color:var(--text-soft);
+  color:var(--text-main);
   border-bottom:none;
 }
+nav button:not(.active){opacity:.92}
 nav button:hover{color:var(--text-main); background:rgba(255,255,255,.08)}
 nav button.active{
   color:white;
@@ -323,10 +324,11 @@ main{max-width:1180px; padding:34px 18px 90px}
 }
 .card-title,.modal-title,.lock-title,.record-title{color:#f8faff}
 .card-title{border-bottom:1px dashed rgba(255,255,255,.14)}
-label,.record-detail,.empty-state,.stat-chip .lbl,.lock-sub,.section-header .btn-secondary,.health-table-wrap th,.health-table-wrap td,.record-date{color:var(--text-soft)}
+label,.record-detail,.empty-state,.stat-chip .lbl,.lock-sub,.section-header .btn-secondary,.health-table-wrap th,.health-table-wrap td{color:var(--text-soft)}
 .record-date{
-  background: rgba(255,255,255,.07);
-  border:1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.11);
+  border:1px solid rgba(255,255,255,.16);
+  color:var(--text-main);
 }
 .stat-chip .num,.record-cost{color:#f5d0fe}
 .profile-photo-wrap{
@@ -335,12 +337,12 @@ label,.record-detail,.empty-state,.stat-chip .lbl,.lock-sub,.section-header .btn
   background:linear-gradient(135deg, rgba(196,181,253,.25), rgba(125,211,252,.18));
 }
 input[type=text],input[type=date],input[type=number],input[type=password],textarea,select{
-  background: rgba(255,255,255,.06);
-  border:1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.09);
+  border:1px solid rgba(255,255,255,.18);
   color:var(--text-main);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
 }
-input::placeholder, textarea::placeholder{color:#94a3b8}
+input::placeholder, textarea::placeholder{color:#c7d2fe}
 input:focus,textarea:focus,select:focus{
   border-color: rgba(196,181,253,.7);
   box-shadow: 0 0 0 4px rgba(196,181,253,.14), inset 0 1px 0 rgba(255,255,255,.08);
@@ -361,26 +363,27 @@ input:focus,textarea:focus,select:focus{
 }
 .btn-primary:hover{background: linear-gradient(135deg, rgba(196,181,253,.68), rgba(125,211,252,.48));}
 .btn-secondary{
-  background: rgba(255,255,255,.08);
+  background: rgba(255,255,255,.12);
   color:var(--text-main);
 }
-.btn-secondary:hover{background:rgba(255,255,255,.14); color:#fff}
+.btn-secondary:hover{background:rgba(255,255,255,.20); color:#fff}
 .btn-danger{background:rgba(248,113,113,.12); color:#fee2e2}
 .btn-danger:hover{background:rgba(248,113,113,.22); color:white}
 .badge{
   border:1px solid rgba(255,255,255,.10);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
 }
-.badge-blue{background:rgba(125,211,252,.12); color:#dff7ff}
-.badge-green{background:rgba(134,239,172,.11); color:#dcfce7}
-.badge-pink{background:rgba(249,168,212,.12); color:#ffe4f0}
-.badge-rust{background:rgba(196,181,253,.14); color:#efe6ff}
-.badge-yellow{background:rgba(253,224,71,.12); color:#fff7c5}
+.badge-blue{background:rgba(125,211,252,.18); color:#effbff}
+.badge-green{background:rgba(134,239,172,.18); color:#f0fff6}
+.badge-pink{background:rgba(249,168,212,.18); color:#fff1f8}
+.badge-rust{background:rgba(196,181,253,.20); color:#f6f1ff}
+.badge-yellow{background:rgba(253,224,71,.22); color:#fffce1}
 .chip-option{
-  border:1px solid rgba(255,255,255,.12);
-  background:rgba(255,255,255,.05);
-  color:var(--text-soft);
+  border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.08);
+  color:var(--text-main);
 }
+.chip-option:hover{background:rgba(255,255,255,.13); color:#fff}
 .chip-option.selected{background:linear-gradient(135deg, rgba(196,181,253,.55), rgba(125,211,252,.36)); border-color:rgba(255,255,255,.14)}
 .modal-overlay{background:rgba(4,8,20,.62)}
 .lock-box,.modal{border-radius:24px}
@@ -389,7 +392,7 @@ input:focus,textarea:focus,select:focus{
 .reminder-item.today{background:rgba(125,211,252,.10);border:1px solid rgba(125,211,252,.22)}
 .reminder-item.past{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.16)}
 .health-table-wrap table, .health-table-wrap th, .health-table-wrap td, table, th, td{border-color:rgba(255,255,255,.08)}
-th{background:rgba(255,255,255,.04); color:var(--text-dim)}
+th{background:rgba(255,255,255,.07); color:var(--text-main)}
 #toast{background:rgba(15,23,42,.86); color:white; border:1px solid rgba(255,255,255,.14); backdrop-filter:blur(12px)}
 #toast.err{background:rgba(127,29,29,.92)}
 @media (max-width: 760px){
@@ -398,6 +401,14 @@ th{background:rgba(255,255,255,.04); color:var(--text-dim)}
   nav{top:8px; width:calc(100% - 16px)}
   .card{padding:20px}
 }
+
+
+
+/* Contrast tuning */
+.record-title,.modal-title,.card-title,.lock-title,strong,b{color:var(--text-main)}
+.record-detail strong,.record-detail b,.empty-state p,.lock-sub{color:var(--text-soft)}
+.record-actions .btn,.section-header .btn,.btn-sm{font-weight:700}
+select option{color:#111827;background:#f8fafc}
 
 </style>
 </head>
@@ -515,6 +526,10 @@ th{background:rgba(255,255,255,.04); color:var(--text-dim)}
       <div class="stat-chip">
         <div class="num" id="costVaccine" style="font-size:1.1rem">—</div>
         <div class="lbl">💉 疫苗費用</div>
+      </div>
+      <div class="stat-chip">
+        <div class="num" id="costSupplies" style="font-size:1.1rem">—</div>
+        <div class="lbl">🛍️ 用品支出</div>
       </div>
     </div>
     <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--caramel-light);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
@@ -646,7 +661,7 @@ th{background:rgba(255,255,255,.04); color:var(--text-dim)}
       <div class="stat-chip"><div class="num" id="supplyCount">—</div><div class="lbl">總筆數</div></div>
     </div>
     <!-- 月份圖表 -->
-    <div style="margin-bottom:8px;font-size:.78rem;color:var(--soft)">近 12 個月每月支出</div>
+    <div style="margin-bottom:8px;font-size:.78rem;color:var(--soft)">完整期間每月支出</div>
     <div class="chart-container" style="height:200px"><canvas id="suppliesChart"></canvas></div>
   </div>
 
@@ -1489,6 +1504,7 @@ function updateCostStats() {
   document.getElementById('costHealth').textContent = fmtNT(healthC);
   document.getElementById('costBath').textContent = fmtNT(bathC);
   document.getElementById('costVaccine').textContent = fmtNT(vaccineC);
+  document.getElementById('costSupplies').textContent = fmtNT(suppliesC);
 
   const now = new Date();
   const thisYear = now.getFullYear().toString();
@@ -2388,13 +2404,25 @@ function renderSuppliesChart() {
   if(!ctx) return;
   if(suppliesChartInst) suppliesChartInst.destroy();
 
-  // Build last 12 months
-  const months = [];
-  for(let i=11;i>=0;i--) {
-    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-i);
-    months.push(d.toISOString().slice(0,7));
+  const validMonths = db.supplies
+    .map(r => (r.date || '').slice(0,7))
+    .filter(m => /^\d{4}-\d{2}$/.test(m))
+    .sort();
+
+  let months = [];
+  if(validMonths.length) {
+    const start = new Date(validMonths[0] + '-01T00:00:00');
+    const end = new Date(validMonths[validMonths.length - 1] + '-01T00:00:00');
+    const cursor = new Date(start);
+    while(cursor <= end) {
+      months.push(cursor.toISOString().slice(0,7));
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+  } else {
+    months = [new Date().toISOString().slice(0,7)];
   }
-  const labels = months.map(m=>m.slice(0,7).replace('-','/'));
+
+  const labels = months.map(m=>m.replace('-','/'));
   const data = months.map(m=>db.supplies.filter(r=>r.date?.startsWith(m)).reduce((s,r)=>s+(parseFloat(r.total)||0),0));
 
   suppliesChartInst = new Chart(ctx, {
@@ -2404,7 +2432,7 @@ function renderSuppliesChart() {
       responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{ labels:{ color:'#5a3e2b', font:{family:'Noto Serif TC'} } } },
       scales:{
-        x:{ ticks:{color:'#9b7560',font:{size:11}}, grid:{display:false} },
+        x:{ ticks:{color:'#9b7560',font:{size: months.length > 24 ? 9 : 11}, maxRotation: months.length > 18 ? 60 : 0, minRotation: months.length > 18 ? 60 : 0}, grid:{display:false} },
         y:{ ticks:{color:'#9b7560', callback:v=>'NT$'+(v>=1000?(v/1000).toFixed(1)+'k':v)}, grid:{color:'rgba(200,149,108,.15)'} }
       }
     }
