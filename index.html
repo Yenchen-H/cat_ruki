@@ -251,6 +251,7 @@ td.ok{color:var(--green)}
   <button onclick="switchTab('diet')">🍽️ 飲食日誌</button>
   <button onclick="switchTab('vaccine')">💉 疫苗驅蟲</button>
   <button onclick="switchTab('reminder')">🔔 提醒事項</button>
+  <button onclick="switchTab('supplies')">🛍️ 用品支出</button>
 </nav>
 
 <main>
@@ -419,9 +420,133 @@ td.ok{color:var(--green)}
   <div id="reminderList"><div class="empty-state"><div class="icon">🔔</div><p>載入中…</p></div></div>
 </div>
 
+<!-- SUPPLIES -->
+<div id="tab-supplies" class="tab-panel">
+  <div class="section-header">
+    <div class="section-title">用品支出</div>
+    <button class="btn btn-primary" onclick="requireAdmin(()=>openModal('suppliesModal'))">＋ 新增購買</button>
+  </div>
+
+  <!-- 類別篩選 -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;align-items:center">
+    <span style="font-size:.78rem;color:var(--soft)">篩選：</span>
+    <button class="btn btn-sm btn-secondary supply-filter active" data-cat="all" onclick="filterSupplies('all',this)">全部</button>
+    <button class="btn btn-sm btn-secondary supply-filter" data-cat="食品" onclick="filterSupplies('食品',this)">🍱 食品</button>
+    <button class="btn btn-sm btn-secondary supply-filter" data-cat="玩具用品" onclick="filterSupplies('玩具用品',this)">🧸 玩具用品</button>
+    <button class="btn btn-sm btn-secondary supply-filter" data-cat="清潔保養" onclick="filterSupplies('清潔保養',this)">🧴 清潔保養</button>
+    <button class="btn btn-sm btn-secondary supply-filter" data-cat="藥品補充" onclick="filterSupplies('藥品補充',this)">💊 藥品補充</button>
+    <button class="btn btn-sm btn-secondary supply-filter" data-cat="居家用品" onclick="filterSupplies('居家用品',this)">🏠 居家用品</button>
+    <button class="btn btn-sm btn-secondary supply-filter" data-cat="其他" onclick="filterSupplies('其他',this)">📦 其他</button>
+  </div>
+
+  <!-- 統計 -->
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-title">📊 支出統計</div>
+    <div class="stats-row" style="margin-bottom:14px">
+      <div class="stat-chip"><div class="num" id="supplyTotalAll" style="color:var(--caramel)">—</div><div class="lbl">累計總支出</div></div>
+      <div class="stat-chip"><div class="num" id="supplyTotalYear" style="font-size:1.1rem">—</div><div class="lbl">本年度</div></div>
+      <div class="stat-chip"><div class="num" id="supplyTotalMonth" style="font-size:1.1rem">—</div><div class="lbl">本月</div></div>
+      <div class="stat-chip"><div class="num" id="supplyCount">—</div><div class="lbl">總筆數</div></div>
+    </div>
+    <!-- 月份圖表 -->
+    <div style="margin-bottom:8px;font-size:.78rem;color:var(--soft)">近 12 個月每月支出</div>
+    <div class="chart-container" style="height:200px"><canvas id="suppliesChart"></canvas></div>
+  </div>
+
+  <!-- 列表 -->
+  <div id="suppliesList" class="record-list"><div class="empty-state"><div class="icon">🛍️</div><p>載入中…</p></div></div>
+</div>
+
 </main>
 
 <!-- ═══ MODALS ═══ -->
+
+<!-- SUPPLIES MODAL -->
+<div class="modal-overlay" id="suppliesModal">
+  <div class="modal">
+    <div class="modal-title">🛍️ 新增用品購買</div>
+
+    <div class="form-row">
+      <div class="form-group"><label>購買日期</label><input type="date" id="sup_date"></div>
+      <div class="form-group"><label>類別</label>
+        <select id="sup_cat" onchange="updateSupplyItems(this.value)">
+          <option value="食品">🍱 食品（飼料、罐頭、零食）</option>
+          <option value="玩具用品">🧸 玩具 & 寵物用品</option>
+          <option value="清潔保養">🧴 清潔保養（貓砂、洗毛精）</option>
+          <option value="藥品補充">💊 藥品 & 補充品</option>
+          <option value="居家用品">🏠 居家用品（跳台、貓窩）</option>
+          <option value="其他">📦 其他</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 常見商品快速選 -->
+    <div class="form-group" id="quickItemsGroup">
+      <label>常見商品（點擊快填）</label>
+      <div class="chip-select" id="supplyQuickChips" style="margin-top:6px"></div>
+    </div>
+
+    <div class="form-group"><label>品牌 / 商品名稱 <span style="color:var(--rust)">*</span></label>
+      <input type="text" id="sup_name" placeholder="例：Royal Canin 室內貓飼料 2kg"></div>
+
+    <!-- 細項明細（可多項） -->
+    <div class="form-group">
+      <label style="display:flex;align-items:center;justify-content:space-between">
+        細項明細
+        <button type="button" class="btn btn-sm btn-secondary" onclick="addSupplyItem()">＋ 新增細項</button>
+      </label>
+      <div id="supplyItemsContainer">
+        <div class="supply-item-row" style="display:grid;grid-template-columns:3fr 1fr 1.2fr auto;gap:8px;align-items:center;margin-top:8px">
+          <input type="text" class="sup-item-name" placeholder="商品名稱 / 規格">
+          <input type="number" class="sup-item-qty" placeholder="數量" min="1" step="1" oninput="calcSupplyRow(this)">
+          <input type="number" class="sup-item-price" placeholder="單價（元）" step="1" oninput="calcSupplyRow(this)">
+          <span class="sup-item-subtotal" style="font-family:'DM Mono',monospace;font-size:.8rem;color:var(--green);white-space:nowrap">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>合計金額（元）</label>
+        <input type="number" id="sup_total" placeholder="自動計算或手動輸入" step="1">
+      </div>
+      <div class="form-group">
+        <label>購買地點</label>
+        <select id="sup_place">
+          <option value="">請選擇</option>
+          <option>實體寵物店</option>
+          <option>動物醫院</option>
+          <option>網路購物（蝦皮）</option>
+          <option>網路購物（PChome）</option>
+          <option>網路購物（其他）</option>
+          <option>大賣場 / 超市</option>
+          <option>其他</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group"><label>品牌</label><input type="text" id="sup_brand" placeholder="例：Royal Canin、Hill's…"></div>
+      <div class="form-group"><label>評價 / 貓咪喜好</label>
+        <select id="sup_rating">
+          <option value="">—</option>
+          <option>⭐⭐⭐⭐⭐ 超喜歡</option>
+          <option>⭐⭐⭐⭐ 喜歡</option>
+          <option>⭐⭐⭐ 普通</option>
+          <option>⭐⭐ 不太喜歡</option>
+          <option>⭐ 不吃 / 不玩</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group"><label>備註</label><textarea id="sup_note" rows="2" placeholder="購買原因、使用心得、下次是否回購…"></textarea></div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('suppliesModal')">取消</button>
+      <button class="btn btn-primary" id="suppliesSaveBtn" onclick="saveSupply()">儲存</button>
+    </div>
+  </div>
+</div>
 
 <!-- VET -->
 <div class="modal-overlay" id="vetModal">
@@ -668,7 +793,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbx8EDj9gqI9_vEg9NrEtrho
 const ADMIN_KEY = 'ruki_admin_unlocked';
 
 let isAdmin = false;
-let db = { profile:{}, vet:[], health:[], bath:[], weight:[], diet:[], vaccine:[], reminders:[] };
+let db = { profile:{}, vet:[], health:[], bath:[], weight:[], diet:[], vaccine:[], reminders:[], supplies:[] };
 
 // ══════════════════════════════════════════
 // API
@@ -803,11 +928,12 @@ function switchTab(name) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
-  const tabs = ['profile','vet','health','bath','weight','diet','vaccine','reminder'];
+  const tabs = ['profile','vet','health','bath','weight','diet','vaccine','reminder','supplies'];
   document.querySelectorAll('nav button')[tabs.indexOf(name)].classList.add('active');
   if (name === 'weight') renderWeightChart();
   if (name === 'health') { renderHealthChartBtns(); renderHealthChart(currentHealthField); renderHealthTable(); }
   if (name === 'reminder') renderReminders();
+  if (name === 'supplies') { renderSupplies(); renderSuppliesChart(); }
 }
 
 function openModal(id) {
@@ -957,7 +1083,8 @@ function updateCostStats() {
   const healthC = sumCost(db.health);
   const bathC = sumCost(db.bath);
   const vaccineC = sumCost(db.vaccine);
-  const total = vetC + healthC + bathC + vaccineC;
+  const suppliesC = db.supplies.reduce((s,r)=>s+(parseFloat(r.total)||0),0);
+  const total = vetC + healthC + bathC + vaccineC + suppliesC;
 
   document.getElementById('costTotal').textContent = total>0 ? 'NT$ '+total.toLocaleString() : '—';
   document.getElementById('costVet').textContent = fmtNT(vetC);
@@ -969,8 +1096,8 @@ function updateCostStats() {
   const thisYear = now.getFullYear().toString();
   const thisMonth = now.toISOString().slice(0,7);
   const allRecs = [...db.vet, ...db.health, ...db.bath, ...db.vaccine];
-  const yearC = sumCost(allRecs.filter(r=>r.date && r.date.startsWith(thisYear)));
-  const monthC = sumCost(allRecs.filter(r=>r.date && r.date.startsWith(thisMonth)));
+  const yearC = sumCost(allRecs.filter(r=>r.date && r.date.startsWith(thisYear))) + db.supplies.filter(r=>r.date?.startsWith(thisYear)).reduce((s,r)=>s+(parseFloat(r.total)||0),0);
+  const monthC = sumCost(allRecs.filter(r=>r.date && r.date.startsWith(thisMonth))) + db.supplies.filter(r=>r.date?.startsWith(thisMonth)).reduce((s,r)=>s+(parseFloat(r.total)||0),0);
   document.getElementById('costThisYear').textContent = yearC>0 ? 'NT$ '+yearC.toLocaleString() : '—';
   document.getElementById('costThisMonth').textContent = monthC>0 ? 'NT$ '+monthC.toLocaleString() : '—';
 }
@@ -979,6 +1106,7 @@ function updateCostStats() {
 // EXPORT / IMPORT BACKUP
 // ══════════════════════════════════════════
 function exportBackup() {
+  if(!isAdmin) { requireAdmin(exportBackup); return; }
   const backup = { exportedAt: new Date().toISOString(), version: '1.0', data: db };
   const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
   const a = document.createElement('a');
@@ -1418,7 +1546,7 @@ async function deleteRec(sheet, id) {
     setSyncBadge('syncing','● 刪除中');
     await apiDelete(sheet, id);
     db[sheet] = db[sheet].filter(r=>r.id!==id);
-    const renders = { vet:renderVet, health:renderHealth, bath:renderBath, weight:renderWeightList, diet:renderDiet, vaccine:renderVaccine, reminders:renderReminders };
+    const renders = { vet:renderVet, health:renderHealth, bath:renderBath, weight:renderWeightList, diet:renderDiet, vaccine:renderVaccine, reminders:renderReminders, supplies:()=>{renderSupplies();renderSuppliesChart();} };
     if(renders[sheet]) renders[sheet]();
     if(sheet==='weight') renderWeightChart();
     if(sheet==='health') { renderHealthChartBtns(); renderHealthChart(currentHealthField); renderHealthTable(); }
@@ -1433,7 +1561,6 @@ async function deleteRec(sheet, id) {
 async function init() {
   document.getElementById('headerDate').textContent = new Date().toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
 
-  // Check if already unlocked this session
   if(sessionStorage.getItem(ADMIN_KEY)) {
     isAdmin = true;
     document.getElementById('adminBtn').textContent = '🔒 登出管理';
@@ -1441,9 +1568,9 @@ async function init() {
 
   try {
     setSyncBadge('syncing','● 載入中');
-    const [profile, vet, health, bath, weight, diet, vaccine, reminders] = await Promise.all([
+    const [profile, vet, health, bath, weight, diet, vaccine, reminders, supplies] = await Promise.all([
       apiRead('profile'), apiRead('vet'), apiRead('health'), apiRead('bath'),
-      apiRead('weight'), apiRead('diet'), apiRead('vaccine'), apiRead('reminders')
+      apiRead('weight'), apiRead('diet'), apiRead('vaccine'), apiRead('reminders'), apiRead('supplies')
     ]);
     db.profile = (profile && profile[0]) ? profile[0] : {};
     db.vet = vet || [];
@@ -1453,6 +1580,7 @@ async function init() {
     db.diet = diet || [];
     db.vaccine = vaccine || [];
     db.reminders = reminders || [];
+    db.supplies = supplies || [];
 
     loadProfileToForm();
     renderVet(); renderHealth(); renderBath(); renderWeightList();
@@ -1465,9 +1593,242 @@ async function init() {
     showToast('無法連接 Google 試算表，請確認網路', true);
   }
 
-  // Hide loading screen
   setTimeout(() => document.getElementById('loadingScreen').classList.add('hide'), 1600);
 }
+
+// ══════════════════════════════════════════
+// SUPPLIES
+// ══════════════════════════════════════════
+const SUPPLY_QUICK_ITEMS = {
+  '食品': ['Royal Canin 飼料', "Hill's 飼料", '主食罐', '副食罐', '零食點心', '貓條', '營養膏', '離乳奶粉'],
+  '玩具用品': ['逗貓棒', '貓抓板', '玩具球', '電動玩具', '貓薄荷', '寵物背包', '外出提籠', '項圈 / 胸背'],
+  '清潔保養': ['礦砂', '豆腐砂', '水晶砂', '除臭噴劑', '洗毛精', '濕紙巾', '牙膏 / 牙刷', '梳子'],
+  '藥品補充': ['益生菌', '關節保健品', '化毛膏', '皮膚保健', 'Omega-3', '眼藥水', '腸胃藥', '感冒藥'],
+  '居家用品': ['貓跳台', '貓窩 / 睡墊', '貓砂盆', '飲水機', '食碗', '貓門', '圍欄', '除毛滾輪'],
+  '其他': ['寵物保險', '寵物旅館', '其他']
+};
+
+let currentSupplyFilter = 'all';
+let suppliesChartInst = null;
+
+function updateSupplyItems(cat) {
+  const chips = document.getElementById('supplyQuickChips');
+  const items = SUPPLY_QUICK_ITEMS[cat] || [];
+  chips.innerHTML = items.map(i=>`<div class="chip-option" onclick="fillSupplyName(this,'${i}')">${i}</div>`).join('');
+}
+
+function fillSupplyName(el, name) {
+  // Find first empty item name row or fill the main name field
+  const rows = document.querySelectorAll('#supplyItemsContainer .supply-item-row');
+  let filled = false;
+  for(const row of rows) {
+    const inp = row.querySelector('.sup-item-name');
+    if(inp && !inp.value) { inp.value = name; filled = true; break; }
+  }
+  if(!filled) document.getElementById('sup_name').value = name;
+  el.classList.add('selected');
+  setTimeout(()=>el.classList.remove('selected'), 600);
+}
+
+function addSupplyItem() {
+  const container = document.getElementById('supplyItemsContainer');
+  const row = document.createElement('div');
+  row.className = 'supply-item-row';
+  row.style.cssText = 'display:grid;grid-template-columns:3fr 1fr 1.2fr auto;gap:8px;align-items:center;margin-top:8px';
+  row.innerHTML = `
+    <input type="text" class="sup-item-name" placeholder="商品名稱 / 規格">
+    <input type="number" class="sup-item-qty" placeholder="數量" min="1" step="1" oninput="calcSupplyRow(this)">
+    <input type="number" class="sup-item-price" placeholder="單價（元）" step="1" oninput="calcSupplyRow(this)">
+    <span style="display:flex;align-items:center;gap:4px">
+      <span class="sup-item-subtotal" style="font-family:'DM Mono',monospace;font-size:.8rem;color:var(--green);white-space:nowrap">—</span>
+      <button type="button" onclick="this.closest('.supply-item-row').remove();recalcSupplyTotal()" style="background:none;border:none;color:var(--soft);cursor:pointer;font-size:.9rem;padding:2px 4px">✕</button>
+    </span>`;
+  container.appendChild(row);
+}
+
+function calcSupplyRow(inp) {
+  const row = inp.closest('.supply-item-row');
+  const qty = parseFloat(row.querySelector('.sup-item-qty').value) || 0;
+  const price = parseFloat(row.querySelector('.sup-item-price').value) || 0;
+  const sub = qty * price;
+  row.querySelector('.sup-item-subtotal').textContent = sub > 0 ? 'NT$ '+sub.toLocaleString() : '—';
+  recalcSupplyTotal();
+}
+
+function recalcSupplyTotal() {
+  let total = 0;
+  document.querySelectorAll('#supplyItemsContainer .supply-item-row').forEach(row => {
+    const qty = parseFloat(row.querySelector('.sup-item-qty')?.value) || 0;
+    const price = parseFloat(row.querySelector('.sup-item-price')?.value) || 0;
+    total += qty * price;
+  });
+  if(total > 0) document.getElementById('sup_total').value = total;
+}
+
+function getSupplyItemsData() {
+  const items = [];
+  document.querySelectorAll('#supplyItemsContainer .supply-item-row').forEach(row => {
+    const name = row.querySelector('.sup-item-name')?.value?.trim();
+    const qty = row.querySelector('.sup-item-qty')?.value;
+    const price = row.querySelector('.sup-item-price')?.value;
+    if(name || qty || price) items.push({ name: name||'', qty: qty||'', price: price||'' });
+  });
+  return items;
+}
+
+function clearSupplyItems() {
+  const c = document.getElementById('supplyItemsContainer');
+  c.innerHTML = `<div class="supply-item-row" style="display:grid;grid-template-columns:3fr 1fr 1.2fr auto;gap:8px;align-items:center;margin-top:8px">
+    <input type="text" class="sup-item-name" placeholder="商品名稱 / 規格">
+    <input type="number" class="sup-item-qty" placeholder="數量" min="1" step="1" oninput="calcSupplyRow(this)">
+    <input type="number" class="sup-item-price" placeholder="單價（元）" step="1" oninput="calcSupplyRow(this)">
+    <span class="sup-item-subtotal" style="font-family:'DM Mono',monospace;font-size:.8rem;color:var(--green);white-space:nowrap">—</span>
+  </div>`;
+}
+
+async function saveSupply() {
+  const items = getSupplyItemsData();
+  const rec = {
+    id: Date.now().toString(),
+    date: document.getElementById('sup_date').value,
+    cat: document.getElementById('sup_cat').value,
+    name: document.getElementById('sup_name').value,
+    items: JSON.stringify(items),
+    total: document.getElementById('sup_total').value,
+    place: document.getElementById('sup_place').value,
+    brand: document.getElementById('sup_brand').value,
+    rating: document.getElementById('sup_rating').value,
+    note: document.getElementById('sup_note').value
+  };
+  if(!rec.date) return showToast('請填入日期', true);
+  if(!rec.name) return showToast('請填入商品名稱', true);
+  setBtnLoading('suppliesSaveBtn', true);
+  try {
+    setSyncBadge('syncing','● 儲存中');
+    await apiWrite('supplies', rec);
+    db.supplies.push(rec);
+    renderSupplies(); renderSuppliesChart(); updateCostStats();
+    closeModal('suppliesModal');
+    clearInputs(['sup_date','sup_name','sup_total','sup_brand','sup_note']);
+    document.getElementById('sup_place').value = '';
+    document.getElementById('sup_rating').value = '';
+    clearSupplyItems();
+    setSyncBadge('ok','● 已連線'); showToast('✓ 用品紀錄已儲存');
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  setBtnLoading('suppliesSaveBtn', false);
+}
+
+function filterSupplies(cat, btn) {
+  currentSupplyFilter = cat;
+  document.querySelectorAll('.supply-filter').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderSupplies();
+}
+
+function renderSupplies() {
+  const list = document.getElementById('suppliesList');
+  let data = [...db.supplies].sort((a,b)=>b.date.localeCompare(a.date));
+  if(currentSupplyFilter !== 'all') data = data.filter(r=>r.cat===currentSupplyFilter);
+
+  // Stats
+  const all = db.supplies;
+  const now = new Date();
+  const thisYear = now.getFullYear().toString();
+  const thisMonth = now.toISOString().slice(0,7);
+  const sumAll = all.reduce((s,r)=>s+(parseFloat(r.total)||0),0);
+  const sumYear = all.filter(r=>r.date?.startsWith(thisYear)).reduce((s,r)=>s+(parseFloat(r.total)||0),0);
+  const sumMonth = all.filter(r=>r.date?.startsWith(thisMonth)).reduce((s,r)=>s+(parseFloat(r.total)||0),0);
+  document.getElementById('supplyTotalAll').textContent = sumAll>0?'NT$ '+sumAll.toLocaleString():'—';
+  document.getElementById('supplyTotalYear').textContent = sumYear>0?'NT$ '+sumYear.toLocaleString():'—';
+  document.getElementById('supplyTotalMonth').textContent = sumMonth>0?'NT$ '+sumMonth.toLocaleString():'—';
+  document.getElementById('supplyCount').textContent = all.length;
+
+  if(!data.length) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">🛍️</div><p>${currentSupplyFilter==='all'?'尚未新增用品支出':'此類別尚無紀錄'}</p></div>`;
+    return;
+  }
+
+  const catColors = {'食品':'badge-green','玩具用品':'badge-blue','清潔保養':'badge-yellow','藥品補充':'badge-pink','居家用品':'badge-rust','其他':'badge-blue'};
+  list.innerHTML = data.map(r=>{
+    let itemsHtml = '';
+    try {
+      const items = JSON.parse(r.items||'[]');
+      if(items.length>0 && items.some(i=>i.name||i.qty||i.price)) {
+        itemsHtml = `<div style="margin-top:8px;background:var(--cream);border-radius:8px;overflow:hidden;border:1px solid var(--caramel-light)">
+          <table style="width:100%;font-size:.76rem;margin:0">
+            <thead><tr>
+              <th style="padding:5px 10px;text-align:left">細項</th>
+              <th style="padding:5px 10px;text-align:center">數量</th>
+              <th style="padding:5px 10px;text-align:right">單價</th>
+              <th style="padding:5px 10px;text-align:right">小計</th>
+            </tr></thead>
+            <tbody>${items.filter(i=>i.name||i.qty||i.price).map(i=>`
+              <tr>
+                <td style="padding:5px 10px">${i.name||'—'}</td>
+                <td style="padding:5px 10px;text-align:center">${i.qty||'—'}</td>
+                <td style="padding:5px 10px;text-align:right">${i.price?'NT$ '+Number(i.price).toLocaleString():'—'}</td>
+                <td style="padding:5px 10px;text-align:right;color:var(--green);font-family:'DM Mono',monospace">
+                  ${(i.qty&&i.price)?'NT$ '+Number(i.qty*i.price).toLocaleString():'—'}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+      }
+    } catch(e){}
+    return `<div class="record-item">
+      <div class="record-date">${r.date}</div>
+      <div class="record-content" style="flex:1">
+        <div class="record-title">
+          <span class="badge ${catColors[r.cat]||'badge-blue'}">${r.cat||'其他'}</span>
+          ${r.name}
+          ${r.rating?`<span style="font-size:.78rem;margin-left:6px">${r.rating.split(' ')[0]}</span>`:''}
+        </div>
+        <div class="record-detail" style="margin-top:4px">
+          ${r.brand?'品牌：'+r.brand+'　':''}${r.place?'購於：'+r.place:''}
+          ${r.note?'<br>'+r.note:''}
+        </div>
+        ${itemsHtml}
+        ${r.total?`<div class="record-cost" style="margin-top:6px">合計 NT$ ${Number(r.total).toLocaleString()}</div>`:''}
+      </div>
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('supplies','${r.id}')">✕</button></div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function renderSuppliesChart() {
+  const ctx = document.getElementById('suppliesChart')?.getContext('2d');
+  if(!ctx) return;
+  if(suppliesChartInst) suppliesChartInst.destroy();
+
+  // Build last 12 months
+  const months = [];
+  for(let i=11;i>=0;i--) {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-i);
+    months.push(d.toISOString().slice(0,7));
+  }
+  const labels = months.map(m=>m.slice(0,7).replace('-','/'));
+  const data = months.map(m=>db.supplies.filter(r=>r.date?.startsWith(m)).reduce((s,r)=>s+(parseFloat(r.total)||0),0));
+
+  suppliesChartInst = new Chart(ctx, {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'月支出 (NT$)', data, backgroundColor:'rgba(200,149,108,.55)', borderColor:'var(--caramel)', borderWidth:1.5, borderRadius:6 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:'#5a3e2b', font:{family:'Noto Serif TC'} } } },
+      scales:{
+        x:{ ticks:{color:'#9b7560',font:{size:11}}, grid:{display:false} },
+        y:{ ticks:{color:'#9b7560', callback:v=>'NT$'+(v>=1000?(v/1000).toFixed(1)+'k':v)}, grid:{color:'rgba(200,149,108,.15)'} }
+      }
+    }
+  });
+}
+
+// Init supplies quick chips on modal open
+document.getElementById('suppliesModal').addEventListener('click', ()=>{});
+window.addEventListener('DOMContentLoaded', ()=>{
+  updateSupplyItems('食品');
+  document.getElementById('sup_cat').addEventListener('change', e=>updateSupplyItems(e.target.value));
+});
 
 init();
 </script>
