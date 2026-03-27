@@ -794,6 +794,163 @@ const ADMIN_KEY = 'ruki_admin_unlocked';
 
 let isAdmin = false;
 let db = { profile:{}, vet:[], health:[], bath:[], weight:[], diet:[], vaccine:[], reminders:[], supplies:[] };
+let editState = { sheet:null, id:null };
+
+function normalizeDateString(value) {
+  if (!value) return '';
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const m = trimmed.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+    if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) {
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+  }
+  if (typeof value === 'number') {
+    const excelEpoch = new Date(Math.round((value - 25569) * 86400 * 1000));
+    if (!isNaN(excelEpoch.getTime())) {
+      return `${excelEpoch.getFullYear()}-${String(excelEpoch.getMonth()+1).padStart(2,'0')}-${String(excelEpoch.getDate()).padStart(2,'0')}`;
+    }
+  }
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`;
+  }
+  return '';
+}
+
+function formatDisplayDate(value) {
+  const s = normalizeDateString(value);
+  if (!s) return '—';
+  return s.replace(/-/g, '/');
+}
+
+function formatHeaderToday() {
+  const d = new Date();
+  const weekdays = ['週日','週一','週二','週三','週四','週五','週六'];
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${weekdays[d.getDay()]}`;
+}
+
+function normalizeRecordIds() {
+  ['vet','health','bath','weight','diet','vaccine','reminders','supplies'].forEach(sheet => {
+    db[sheet] = (db[sheet] || []).map(r => ({
+      ...r,
+      id: (r?.id ?? '') === '' ? `${Date.now()}${Math.floor(Math.random()*1000)}` : String(r.id),
+      sourceId: r?.sourceId == null ? r?.sourceId : String(r.sourceId)
+    }));
+  });
+}
+
+function normalizeDbDates() {
+  normalizeRecordIds();
+  ['vet','health','bath','weight','diet','vaccine','reminders','supplies'].forEach(sheet => {
+    db[sheet] = (db[sheet] || []).map(r => ({ ...r, date: normalizeDateString(r.date) }));
+  });
+  if (db.profile?.birthday) db.profile.birthday = normalizeDateString(db.profile.birthday);
+}
+
+function startEdit(sheet, id, fillFn, modalId, title) {
+  const targetId = String(id);
+  const rec = (db[sheet] || []).find(r => String(r.id) === targetId);
+  if (!rec) return showToast('找不到要編輯的紀錄', true);
+  editState = { sheet, id: targetId };
+  fillFn(rec);
+  const modal = document.getElementById(modalId);
+  const titleEl = modal.querySelector('.modal-title');
+  if (titleEl) titleEl.textContent = title;
+  const saveBtn = modal.querySelector('.btn-primary[id$="SaveBtn"]');
+  if (saveBtn) saveBtn.innerHTML = '更新';
+  openModal(modalId);
+}
+
+function resetEditState(modalId, defaultTitle, saveBtnId) {
+  if (modalId) {
+    const modal = document.getElementById(modalId);
+    const titleEl = modal?.querySelector('.modal-title');
+    if (titleEl) titleEl.textContent = defaultTitle;
+  }
+  const btn = document.getElementById(saveBtnId);
+  if (btn && !btn.disabled) btn.innerHTML = '儲存';
+  editState = { sheet:null, id:null };
+}
+
+function rerenderAllRecords() {
+  renderVet();
+  renderHealth();
+  renderBath();
+  renderWeightList();
+  renderDiet();
+  renderVaccine();
+  renderReminders();
+  renderHealthChartBtns();
+  updateProfileStats();
+  if (document.getElementById('tab-weight')?.classList.contains('active')) renderWeightChart();
+  if (document.getElementById('tab-health')?.classList.contains('active')) {
+    renderHealthChart(currentHealthField);
+    renderHealthTable();
+  }
+  if (document.getElementById('tab-supplies')?.classList.contains('active')) {
+    renderSupplies();
+    renderSuppliesChart();
+  }
+}
+
+function findLinkedReminder(source, sourceId, fallbackFn) {
+  const targetSourceId = String(sourceId);
+  let linked = (db.reminders || []).find(r => r.source === source && String(r.sourceId) === targetSourceId);
+  if (!linked && typeof fallbackFn === 'function') linked = (db.reminders || []).find(fallbackFn);
+  return linked || null;
+}
+
+async function upsertLinkedReminder(source, sourceId, reminderData, fallbackFn) {
+  const existing = findLinkedReminder(source, sourceId, fallbackFn);
+  if (existing) {
+    await apiDelete('reminders', existing.id);
+    db.reminders = db.reminders.filter(r => r.id !== existing.id);
+    reminderData.id = existing.id;
+  } else {
+    reminderData.id = reminderData.id || `${Date.now()}${Math.floor(Math.random()*1000)}`;
+  }
+  reminderData.source = source;
+  reminderData.sourceId = sourceId;
+  await apiWrite('reminders', reminderData);
+  db.reminders.push(reminderData);
+}
+
+async function deleteLinkedReminder(source, sourceId, fallbackFn) {
+  const existing = findLinkedReminder(source, sourceId, fallbackFn);
+  if (!existing) return;
+  await apiDelete('reminders', existing.id);
+  db.reminders = db.reminders.filter(r => r.id !== existing.id);
+}
+
+async function syncAllFromCloud(showStatus = false) {
+  try {
+    if (showStatus) setSyncBadge('syncing','● 同步中');
+    const [profile, vet, health, bath, weight, diet, vaccine, reminders, supplies] = await Promise.all([
+      apiRead('profile'), apiRead('vet'), apiRead('health'), apiRead('bath'),
+      apiRead('weight'), apiRead('diet'), apiRead('vaccine'), apiRead('reminders'), apiRead('supplies')
+    ]);
+    db.profile = (profile && profile[0]) ? profile[0] : {};
+    db.vet = vet || [];
+    db.health = health || [];
+    db.bath = bath || [];
+    db.weight = weight || [];
+    db.diet = diet || [];
+    db.vaccine = vaccine || [];
+    db.reminders = reminders || [];
+    db.supplies = supplies || [];
+    normalizeDbDates();
+    loadProfileToForm();
+    rerenderAllRecords();
+    if (showStatus) setSyncBadge('ok','● 已連線');
+  } catch (e) {
+    if (showStatus) setSyncBadge('error','● 同步失敗');
+    console.error('syncAllFromCloud failed', e);
+    throw e;
+  }
+}
+
 
 // ══════════════════════════════════════════
 // API
@@ -845,6 +1002,7 @@ function toggleAdmin() {
     isAdmin = false;
     sessionStorage.removeItem(ADMIN_KEY);
     document.getElementById('adminBtn').textContent = '🔓 管理';
+    rerenderAllRecords();
     showToast('已登出管理模式');
   } else {
     document.getElementById('lockScreen').classList.add('show');
@@ -912,9 +1070,11 @@ async function doUnlock() {
     sessionStorage.setItem(ADMIN_KEY, pwd);
     document.getElementById('lockScreen').classList.remove('show');
     document.getElementById('adminBtn').textContent = '🔒 登出管理';
+    rerenderAllRecords();
     showToast('✓ 管理員模式已啟用');
     setSyncBadge('ok', '● 已連線');
     if (window._pendingAdminFn) { window._pendingAdminFn(); window._pendingAdminFn = null; }
+    await syncAllFromCloud(false);
   } catch(e) {
     document.getElementById('lockError').textContent = '連線失敗，請稍後再試';
     setSyncBadge('error', '● 連線失敗');
@@ -930,6 +1090,7 @@ function switchTab(name) {
   document.getElementById('tab-'+name).classList.add('active');
   const tabs = ['profile','vet','health','bath','weight','diet','vaccine','reminder','supplies'];
   document.querySelectorAll('nav button')[tabs.indexOf(name)].classList.add('active');
+  if (name === 'vet') renderVet();
   if (name === 'weight') renderWeightChart();
   if (name === 'health') { renderHealthChartBtns(); renderHealthChart(currentHealthField); renderHealthTable(); }
   if (name === 'reminder') renderReminders();
@@ -942,8 +1103,41 @@ function openModal(id) {
   const d = document.querySelector(`#${id} input[type=date]`);
   if (d && !d.value) d.value = today;
 }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  const defaults = {
+    vetModal:['🏥 新增看診紀錄','vetSaveBtn'],
+    healthModal:['📊 新增健康檢查','healthSaveBtn'],
+    bathModal:['🛁 新增洗澡紀錄','bathSaveBtn'],
+    weightModal:['⚖️ 記錄體重','weightSaveBtn'],
+    dietModal:['🍽️ 新增飲食紀錄','dietSaveBtn'],
+    vaccineModal:['💉 新增疫苗 / 驅蟲','vaccineSaveBtn'],
+    reminderModal:['🔔 新增提醒','reminderSaveBtn'],
+    suppliesModal:['🛍️ 新增用品購買','suppliesSaveBtn']
+  };
+  if (defaults[id]) resetEditState(id, defaults[id][0], defaults[id][1]);
+}
 document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if(e.target===o) o.classList.remove('open'); }));
+
+const vetListEl = document.getElementById('vetList');
+if (vetListEl) {
+  vetListEl.addEventListener('click', (e) => {
+    const editBtn = e.target.closest('[data-action=\"edit-vet\"]');
+    if (editBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isAdmin) return requireAdmin(() => editVet(editBtn.dataset.id));
+      return editVet(editBtn.dataset.id);
+    }
+    const delBtn = e.target.closest('[data-action=\"delete-vet\"]');
+    if (delBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isAdmin) return requireAdmin(() => deleteRec('vet', delBtn.dataset.id));
+      return deleteRec('vet', delBtn.dataset.id);
+    }
+  });
+}
 
 function toggleChip(el) { el.classList.toggle('selected'); }
 function getSelectedChips(id) { return Array.from(document.querySelectorAll(`#${id} .chip-option.selected`)).map(c=>c.textContent); }
@@ -1184,7 +1378,7 @@ function doSearch(q) {
   if(!results.length) { box.innerHTML='<div style="color:var(--soft);font-size:.83rem;padding:8px 0">找不到符合的紀錄</div>'; return; }
   box.innerHTML = results.map(r=>`
     <div class="record-item" style="margin-bottom:8px">
-      <div class="record-date">${r.date}</div>
+      <div class="record-date">${formatDisplayDate(r.date)}</div>
       <div class="record-content">
         <div class="record-title"><span class="badge badge-rust">${r.type}</span> ${r.title}</div>
         ${r.detail?`<div class="record-detail">${r.detail}</div>`:''}
@@ -1196,6 +1390,7 @@ function doSearch(q) {
 // VET
 // ══════════════════════════════════════════
 async function saveVet() {
+  const wasEditing = editState.sheet !== null;
   const checks = getSelectedChips('vetCheckChips');
   const extra = document.getElementById('vet_extra_check').value;
   if(extra) checks.push(extra);
@@ -1211,22 +1406,38 @@ async function saveVet() {
     doctor: document.getElementById('vet_doctor').value,
     note: document.getElementById('vet_note').value
   };
+  const originalId = editState.sheet === 'vet' && editState.id != null ? String(editState.id) : null;
   if(!rec.date) return showToast('請填入日期', true);
   setBtnLoading('vetSaveBtn', true);
   try {
     setSyncBadge('syncing', '● 儲存中');
+    if (originalId) {
+      await apiDelete('vet', originalId);
+      db.vet = db.vet.filter(r => String(r.id) !== String(originalId));
+      rec.id = originalId;
+    }
     await apiWrite('vet', rec);
     db.vet.push(rec);
+
+    const fallbackReminderMatcher = r => r.type === '🏥 回診' && r.title === '回診：'+(rec.reason||'') && (r.note||'') === (rec.doctor||'');
     if(rec.followup) {
-      const remRec = { id:(Date.now()+1).toString(), title:'回診：'+(rec.reason||''), date:rec.followup, type:'🏥 回診', note:rec.doctor||'' };
-      await apiWrite('reminders', remRec);
-      db.reminders.push(remRec);
+      const remRec = {
+        title:'回診：'+(rec.reason||''),
+        date:rec.followup,
+        type:'🏥 回診',
+        note:rec.doctor||''
+      };
+      await upsertLinkedReminder('vet', rec.id, remRec, fallbackReminderMatcher);
+    } else {
+      await deleteLinkedReminder('vet', rec.id, fallbackReminderMatcher);
     }
-    renderVet(); updateProfileStats(); closeModal('vetModal');
+
+    renderVet(); renderReminders(); updateProfileStats(); closeModal('vetModal');
     clearInputs(['vet_date','vet_cost','vet_reason','vet_diagnosis','vet_extra_check','vet_medicine','vet_followup','vet_doctor','vet_note']);
     clearChips('vetCheckChips');
+    resetEditState('vetModal', '🏥 新增看診紀錄', 'vetSaveBtn');
     setSyncBadge('ok', '● 已連線');
-    showToast('✓ 看診紀錄已儲存');
+    showToast(wasEditing ? '✓ 看診紀錄已更新' : '✓ 看診紀錄已儲存');
   } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
   setBtnLoading('vetSaveBtn', false);
 }
@@ -1237,19 +1448,19 @@ function renderVet() {
   const sorted = [...db.vet].sort((a,b)=>b.date.localeCompare(a.date));
   list.innerHTML = sorted.map(r=>`
     <div class="record-item">
-      <div class="record-date">${r.date}</div>
+      <div class="record-date">${formatDisplayDate(r.date)}</div>
       <div class="record-content">
         <div class="record-title">${r.reason||'一般看診'}${r.doctor?'<span class="badge badge-blue" style="margin-left:6px">'+r.doctor+'</span>':''}</div>
         <div class="record-detail">
           ${r.diagnosis?'診斷：'+r.diagnosis+'<br>':''}
           ${r.checks?r.checks.split('、').map(c=>`<span class="badge badge-blue">${c}</span>`).join(' ')+'<br>':''}
           ${r.medicine?'用藥：'+r.medicine+'<br>':''}
-          ${r.followup?'回診：'+r.followup:''}
+          ${r.followup?'回診：'+formatDisplayDate(r.followup):''}
           ${r.note?'<br>'+r.note:''}
         </div>
         ${r.cost?`<div class="record-cost">NT$ ${Number(r.cost).toLocaleString()}</div>`:''}
       </div>
-      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('vet','${r.id}')">✕</button></div>`:''}
+      ${isAdmin?`<div class="record-actions"><button type="button" class="btn btn-sm btn-secondary" data-action="edit-vet" data-id="${r.id}" onclick="editVet('${r.id}')">編輯</button><button type="button" class="btn btn-sm btn-danger" data-action="delete-vet" data-id="${r.id}" onclick="deleteRec('vet','${r.id}')">✕</button></div>`:''}
     </div>`).join('');
 }
 
@@ -1303,7 +1514,7 @@ function renderHealthTable() {
   if(!db.health.length) { wrap.innerHTML='<p class="no-data" style="padding:16px;color:var(--soft)">尚未有健檢資料</p>'; return; }
   const sorted = [...db.health].sort((a,b)=>b.date.localeCompare(a.date));
   const shown = HEALTH_FIELDS.filter(f=>sorted.some(r=>r[f.key]));
-  wrap.innerHTML = `<table><thead><tr><th>指標</th>${sorted.map(r=>`<th>${r.date}</th>`).join('')}</tr></thead><tbody>
+  wrap.innerHTML = `<table><thead><tr><th>指標</th>${sorted.map(r=>`<th>${formatDisplayDate(r.date)}</th>`).join('')}</tr></thead><tbody>
     ${shown.map(f=>`<tr><td><strong>${f.label}</strong></td>${sorted.map(r=>{
       const v=r[f.key]; if(!v) return '<td>—</td>';
       return `<td>${v}</td>`;
@@ -1312,6 +1523,7 @@ function renderHealthTable() {
 }
 
 async function saveHealth() {
+  const wasEditing = editState.sheet !== null;
   const fields = ['glu','bun','cre','nh3','tcho','tg','tbil','ca','ip','tp','alb','glob','got','gpt','cpk','ldh','amyl','ggt','alp1','alp2','mg','na','k','cl','tco2','lipase','bun_crea','alb_glob','wbc','rbc','hgb','hct','mcv','mch','mchc','rdw','plt','mpv','pct','pdw','lym','mono','gra','eos','t4','tsh','cortisol','bile','fructosamine','cpl','fpl','vsaa'];
   const rec = { id: Date.now().toString(), date: document.getElementById('h_date').value, cost: document.getElementById('h_cost').value, weight: document.getElementById('h_weight').value, note: document.getElementById('h_note').value };
   fields.forEach(f => { const el=document.getElementById('h_'+f); if(el) rec[f]=el.value; });
@@ -1319,12 +1531,19 @@ async function saveHealth() {
   setBtnLoading('healthSaveBtn', true);
   try {
     setSyncBadge('syncing','● 儲存中');
+    if (editState.sheet === 'health' && editState.id) {
+      await apiDelete('health', editState.id);
+      db.health = db.health.filter(r => r.id !== editState.id);
+      rec.id = editState.id;
+    }
     await apiWrite('health', rec);
     db.health.push(rec);
     renderHealth(); renderHealthChartBtns(); renderHealthChart(currentHealthField); renderHealthTable();
     closeModal('healthModal');
     document.querySelectorAll('#healthModal input').forEach(el=>el.value='');
-    setSyncBadge('ok','● 已連線'); showToast('✓ 健檢紀錄已儲存');
+    document.getElementById('h_note').value='';
+    resetEditState('healthModal', '📊 新增健康檢查', 'healthSaveBtn');
+    setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 健檢紀錄已更新' : '✓ 健檢紀錄已儲存');
   } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
   setBtnLoading('healthSaveBtn', false);
 }
@@ -1336,13 +1555,13 @@ function renderHealth() {
   list.innerHTML = sorted.map(r=>{
     const badges = HEALTH_FIELDS.filter(f=>f.key!=='weight'&&r[f.key]).map(f=>`<span class="badge badge-green">${f.label}: ${r[f.key]}</span>`).join(' ');
     return `<div class="record-item">
-      <div class="record-date">${r.date}</div>
+      <div class="record-date">${formatDisplayDate(r.date)}</div>
       <div class="record-content">
         <div class="record-title">健康檢查${r.weight?'　<span style="font-family:DM Mono;font-size:.9rem">'+r.weight+' kg</span>':''}</div>
         <div class="record-detail">${badges}${r.note?'<br>'+r.note:''}</div>
         ${r.cost?`<div class="record-cost">NT$ ${Number(r.cost).toLocaleString()}</div>`:''}
       </div>
-      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('health','${r.id}')">✕</button></div>`:''}
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-secondary" onclick="editHealth('${r.id}')">編輯</button><button class="btn btn-sm btn-danger" onclick="deleteRec('health','${r.id}')">✕</button></div>`:''}
     </div>`;
   }).join('');
 }
@@ -1351,17 +1570,24 @@ function renderHealth() {
 // BATH
 // ══════════════════════════════════════════
 async function saveBath() {
+  const wasEditing = editState.sheet !== null;
   const services = getSelectedChips('bathServiceChips');
   const rec = { id:Date.now().toString(), date:document.getElementById('bath_date').value, cost:document.getElementById('bath_cost').value, place:document.getElementById('bath_place').value, services:services.join('、'), note:document.getElementById('bath_note').value };
   if(!rec.date) return showToast('請填入日期', true);
   setBtnLoading('bathSaveBtn', true);
   try {
     setSyncBadge('syncing','● 儲存中');
+    if (editState.sheet === 'bath' && editState.id) {
+      await apiDelete('bath', editState.id);
+      db.bath = db.bath.filter(r => r.id !== editState.id);
+      rec.id = editState.id;
+    }
     await apiWrite('bath', rec);
     db.bath.push(rec);
     renderBath(); updateProfileStats(); closeModal('bathModal');
     clearInputs(['bath_date','bath_cost','bath_note']); clearChips('bathServiceChips');
-    setSyncBadge('ok','● 已連線'); showToast('✓ 洗澡紀錄已儲存');
+    resetEditState('bathModal', '🛁 新增洗澡紀錄', 'bathSaveBtn');
+    setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 洗澡紀錄已更新' : '✓ 洗澡紀錄已儲存');
   } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
   setBtnLoading('bathSaveBtn', false);
 }
@@ -1372,13 +1598,13 @@ function renderBath() {
   const sorted = [...db.bath].sort((a,b)=>b.date.localeCompare(a.date));
   list.innerHTML = sorted.map(r=>`
     <div class="record-item">
-      <div class="record-date">${r.date}</div>
+      <div class="record-date">${formatDisplayDate(r.date)}</div>
       <div class="record-content">
         <div class="record-title">${r.place}</div>
         <div class="record-detail">${r.services?r.services.split('、').map(s=>`<span class="badge badge-pink">${s}</span>`).join(' '):''}${r.note?'<br>'+r.note:''}</div>
         ${r.cost?`<div class="record-cost">NT$ ${Number(r.cost).toLocaleString()}</div>`:''}
       </div>
-      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('bath','${r.id}')">✕</button></div>`:''}
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-secondary" onclick="editBath('${r.id}')">編輯</button><button class="btn btn-sm btn-danger" onclick="deleteRec('bath','${r.id}')">✕</button></div>`:''}
     </div>`).join('');
 }
 
@@ -1386,16 +1612,23 @@ function renderBath() {
 // WEIGHT
 // ══════════════════════════════════════════
 async function saveWeight() {
+  const wasEditing = editState.sheet !== null;
   const rec = { id:Date.now().toString(), date:document.getElementById('w_date').value, weight:document.getElementById('w_weight').value, note:document.getElementById('w_note').value };
   if(!rec.date||!rec.weight) return showToast('請填入日期與體重', true);
   setBtnLoading('weightSaveBtn', true);
   try {
     setSyncBadge('syncing','● 儲存中');
+    if (editState.sheet === 'weight' && editState.id) {
+      await apiDelete('weight', editState.id);
+      db.weight = db.weight.filter(r => r.id !== editState.id);
+      rec.id = editState.id;
+    }
     await apiWrite('weight', rec);
     db.weight.push(rec);
     renderWeightList(); renderWeightChart(); updateProfileStats(); closeModal('weightModal');
     clearInputs(['w_date','w_weight','w_note']);
-    setSyncBadge('ok','● 已連線'); showToast('✓ 體重已記錄');
+    resetEditState('weightModal', '⚖️ 記錄體重', 'weightSaveBtn');
+    setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 體重紀錄已更新' : '✓ 體重已記錄');
   } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
   setBtnLoading('weightSaveBtn', false);
 }
@@ -1425,12 +1658,12 @@ function renderWeightList() {
     let trend = '';
     if(prev) { const d=(parseFloat(r.weight)-parseFloat(prev.weight)).toFixed(2); trend = d>0?`<span class="trend-up"> ▲+${d}</span>`:d<0?`<span class="trend-down"> ▼${d}</span>`:`<span class="trend-same"> ─</span>`; }
     return `<div class="record-item">
-      <div class="record-date">${r.date}</div>
+      <div class="record-date">${formatDisplayDate(r.date)}</div>
       <div class="record-content">
         <div class="record-title" style="font-family:'DM Mono',monospace;font-size:1.1rem">${r.weight} kg${trend}</div>
         ${r.note?`<div class="record-detail">${r.note}</div>`:''}
       </div>
-      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('weight','${r.id}')">✕</button></div>`:''}
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-secondary" onclick="editWeight('${r.id}')">編輯</button><button class="btn btn-sm btn-danger" onclick="deleteRec('weight','${r.id}')">✕</button></div>`:''}
     </div>`;
   }).join('');
 }
@@ -1439,15 +1672,22 @@ function renderWeightList() {
 // DIET
 // ══════════════════════════════════════════
 async function saveDiet() {
+  const wasEditing = editState.sheet !== null;
   const rec = { id:Date.now().toString(), date:document.getElementById('diet_date').value, water:document.getElementById('diet_water').value, am:document.getElementById('diet_am').value, noon:document.getElementById('diet_noon').value, pm:document.getElementById('diet_pm').value, snack:document.getElementById('diet_snack').value, appetite:document.getElementById('diet_appetite').value, note:document.getElementById('diet_note').value };
   if(!rec.date) return showToast('請填入日期', true);
   setBtnLoading('dietSaveBtn', true);
   try {
     setSyncBadge('syncing','● 儲存中');
+    if (editState.sheet === 'diet' && editState.id) {
+      await apiDelete('diet', editState.id);
+      db.diet = db.diet.filter(r => r.id !== editState.id);
+      rec.id = editState.id;
+    }
     await apiWrite('diet', rec);
     db.diet.push(rec); renderDiet(); closeModal('dietModal');
     clearInputs(['diet_date','diet_water','diet_am','diet_noon','diet_pm','diet_snack','diet_note']);
-    setSyncBadge('ok','● 已連線'); showToast('✓ 飲食日誌已儲存');
+    resetEditState('dietModal', '🍽️ 新增飲食紀錄', 'dietSaveBtn');
+    setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 飲食日誌已更新' : '✓ 飲食日誌已儲存');
   } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
   setBtnLoading('dietSaveBtn', false);
 }
@@ -1459,12 +1699,12 @@ function renderDiet() {
   list.innerHTML = sorted.map(r=>{
     const meals=[r.am&&'早：'+r.am,r.noon&&'午：'+r.noon,r.pm&&'晚：'+r.pm,r.snack&&'點心：'+r.snack].filter(Boolean);
     return `<div class="record-item">
-      <div class="record-date">${r.date}</div>
+      <div class="record-date">${formatDisplayDate(r.date)}</div>
       <div class="record-content">
         <div class="record-title">${r.appetite}${r.water?'　💧'+r.water+'ml':''}</div>
         <div class="record-detail">${meals.join('　')}${r.note?'<br>'+r.note:''}</div>
       </div>
-      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('diet','${r.id}')">✕</button></div>`:''}
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-secondary" onclick="editDiet('${r.id}')">編輯</button><button class="btn btn-sm btn-danger" onclick="deleteRec('diet','${r.id}')">✕</button></div>`:''}
     </div>`;
   }).join('');
 }
@@ -1473,23 +1713,35 @@ function renderDiet() {
 // VACCINE
 // ══════════════════════════════════════════
 async function saveVaccine() {
+  const wasEditing = editState.sheet !== null;
   const rec = { id:Date.now().toString(), date:document.getElementById('vac_date').value, cost:document.getElementById('vac_cost').value, type:document.getElementById('vac_type').value, brand:document.getElementById('vac_brand').value, next:document.getElementById('vac_next').value, note:document.getElementById('vac_note').value };
+  const originalId = editState.sheet === 'vaccine' ? editState.id : null;
   if(!rec.date) return showToast('請填入日期', true);
   setBtnLoading('vaccineSaveBtn', true);
-  try {
-    setSyncBadge('syncing','● 儲存中');
-    await apiWrite('vaccine', rec);
-    db.vaccine.push(rec);
-    if(rec.next) {
-      const remRec = { id:(Date.now()+1).toString(), title:rec.type+'到期', date:rec.next, type:'💉 疫苗', note:rec.brand||'' };
-      await apiWrite('reminders', remRec);
-      db.reminders.push(remRec);
-    }
-    renderVaccine(); closeModal('vaccineModal');
-    clearInputs(['vac_date','vac_cost','vac_brand','vac_next','vac_note']);
-    setSyncBadge('ok','● 已連線'); showToast('✓ 疫苗紀錄已儲存');
-  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
-  setBtnLoading('vaccineSaveBtn', false);
+  (async()=>{
+    try {
+      setSyncBadge('syncing','● 儲存中');
+      if (originalId) {
+        await apiDelete('vaccine', originalId);
+        db.vaccine = db.vaccine.filter(r => r.id !== originalId);
+        rec.id = originalId;
+      }
+      await apiWrite('vaccine', rec);
+      db.vaccine.push(rec);
+      const fallbackReminderMatcher = r => ['💉 疫苗','🐛 驅蟲'].includes(r.type) && r.title === rec.type+'到期' && (r.note||'') === (rec.brand||'');
+      if(rec.next) {
+        const remRec = { title:rec.type+'到期', date:rec.next, type: rec.type?.includes('驅') ? '🐛 驅蟲' : '💉 疫苗', note:rec.brand||'' };
+        await upsertLinkedReminder('vaccine', rec.id, remRec, fallbackReminderMatcher);
+      } else {
+        await deleteLinkedReminder('vaccine', rec.id, fallbackReminderMatcher);
+      }
+      renderVaccine(); renderReminders(); closeModal('vaccineModal');
+      clearInputs(['vac_date','vac_cost','vac_brand','vac_next','vac_note']);
+      resetEditState('vaccineModal', '💉 新增疫苗 / 驅蟲', 'vaccineSaveBtn');
+      setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 疫苗紀錄已更新' : '✓ 疫苗紀錄已儲存');
+    } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+    setBtnLoading('vaccineSaveBtn', false);
+  })();
 }
 
 function renderVaccine() {
@@ -1498,13 +1750,13 @@ function renderVaccine() {
   const sorted = [...db.vaccine].sort((a,b)=>b.date.localeCompare(a.date));
   list.innerHTML = sorted.map(r=>`
     <div class="record-item">
-      <div class="record-date">${r.date}</div>
+      <div class="record-date">${formatDisplayDate(r.date)}</div>
       <div class="record-content">
         <div class="record-title"><span class="badge badge-rust">${r.type}</span> ${r.brand||''}</div>
-        <div class="record-detail">${r.next?'下次：'+r.next:''}${r.note?'　'+r.note:''}</div>
+        <div class="record-detail">${r.next?'下次：'+formatDisplayDate(r.next):''}${r.note?'　'+r.note:''}</div>
         ${r.cost?`<div class="record-cost">NT$ ${Number(r.cost).toLocaleString()}</div>`:''}
       </div>
-      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('vaccine','${r.id}')">✕</button></div>`:''}
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-secondary" onclick="editVaccine('${r.id}')">編輯</button><button class="btn btn-sm btn-danger" onclick="deleteRec('vaccine','${r.id}')">✕</button></div>`:''}
     </div>`).join('');
 }
 
@@ -1512,15 +1764,22 @@ function renderVaccine() {
 // REMINDERS
 // ══════════════════════════════════════════
 async function saveReminder() {
+  const wasEditing = editState.sheet !== null;
   const rec = { id:Date.now().toString(), title:document.getElementById('rem_title').value, date:document.getElementById('rem_date').value, type:document.getElementById('rem_type').value, note:document.getElementById('rem_note').value };
   if(!rec.title||!rec.date) return showToast('請填入標題與日期', true);
   setBtnLoading('reminderSaveBtn', true);
   try {
     setSyncBadge('syncing','● 儲存中');
+    if (editState.sheet === 'reminders' && editState.id) {
+      await apiDelete('reminders', editState.id);
+      db.reminders = db.reminders.filter(r => r.id !== editState.id);
+      rec.id = editState.id;
+    }
     await apiWrite('reminders', rec);
     db.reminders.push(rec); renderReminders(); closeModal('reminderModal');
     clearInputs(['rem_title','rem_date','rem_note']);
-    setSyncBadge('ok','● 已連線'); showToast('✓ 提醒已設定');
+    resetEditState('reminderModal', '🔔 新增提醒', 'reminderSaveBtn');
+    setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 提醒已更新' : '✓ 提醒已設定');
   } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
   setBtnLoading('reminderSaveBtn', false);
 }
@@ -1537,36 +1796,167 @@ function renderReminders() {
     const daysText = diff===0?'📣 今天！':diff<0?`已過 ${-diff} 天`:`${diff} 天後`;
     return `<div class="reminder-item ${cls}">
       <div class="reminder-icon">${r.type?.split(' ')[0]||'📌'}</div>
-      <div class="reminder-text"><strong>${r.title}</strong><div style="font-size:.75rem;color:var(--soft);margin-top:2px">${r.date}${r.note?'　'+r.note:''}</div></div>
+      <div class="reminder-text"><strong>${r.title}</strong><div style="font-size:.75rem;color:var(--soft);margin-top:2px">${formatDisplayDate(r.date)}${r.note?'　'+r.note:''}</div></div>
       <div class="reminder-days" style="color:${diff<0?'var(--rust)':diff===0?'var(--yellow)':'var(--green)'}">${daysText}</div>
-      ${isAdmin?`<button class="btn btn-sm btn-danger" onclick="deleteRec('reminders','${r.id}')">✕</button>`:''}
+      ${isAdmin?`<span style="display:flex;gap:6px"><button class="btn btn-sm btn-secondary" onclick="editReminder('${r.id}')">編輯</button><button class="btn btn-sm btn-danger" onclick="deleteRec('reminders','${r.id}')">✕</button></span>`:''}
     </div>`;
   }).join('');
 }
+
+
+// ══════════════════════════════════════════
+// EDIT HELPERS
+// ══════════════════════════════════════════
+function fillVetForm(r) {
+  document.getElementById('vet_date').value = normalizeDateString(r.date);
+  document.getElementById('vet_cost').value = r.cost || '';
+  document.getElementById('vet_reason').value = r.reason || '';
+  document.getElementById('vet_diagnosis').value = r.diagnosis || '';
+  document.getElementById('vet_medicine').value = r.medicine || '';
+  document.getElementById('vet_followup').value = normalizeDateString(r.followup);
+  document.getElementById('vet_doctor').value = r.doctor || '';
+  document.getElementById('vet_note').value = r.note || '';
+  document.getElementById('vet_extra_check').value = '';
+  clearChips('vetCheckChips');
+  const checks = (r.checks || '').split('、').filter(Boolean);
+  document.querySelectorAll('#vetCheckChips .chip-option').forEach(el => {
+    if (checks.includes(el.textContent)) el.classList.add('selected');
+  });
+  const builtins = Array.from(document.querySelectorAll('#vetCheckChips .chip-option')).map(el => el.textContent);
+  const extras = checks.filter(c => !builtins.includes(c));
+  if (extras.length) document.getElementById('vet_extra_check').value = extras.join('、');
+}
+function editVet(id) { startEdit('vet', id, fillVetForm, 'vetModal', '🏥 編輯看診紀錄'); }
+
+function fillHealthForm(r) {
+  document.getElementById('h_date').value = normalizeDateString(r.date);
+  document.getElementById('h_cost').value = r.cost || '';
+  document.getElementById('h_weight').value = r.weight || '';
+  document.getElementById('h_note').value = r.note || '';
+  ['glu','bun','cre','nh3','tcho','tg','tbil','ca','ip','tp','alb','glob','got','gpt','cpk','ldh','amyl','ggt','alp1','alp2','mg','na','k','cl','tco2','lipase','bun_crea','alb_glob','wbc','rbc','hgb','hct','mcv','mch','mchc','rdw','plt','mpv','pct','pdw','lym','mono','gra','eos','t4','tsh','cortisol','bile','fructosamine','cpl','fpl','vsaa'].forEach(f => {
+    const el = document.getElementById('h_'+f);
+    if (el) el.value = r[f] || '';
+  });
+}
+function editHealth(id) { startEdit('health', id, fillHealthForm, 'healthModal', '📊 編輯健康檢查'); }
+
+function fillBathForm(r) {
+  document.getElementById('bath_date').value = normalizeDateString(r.date);
+  document.getElementById('bath_cost').value = r.cost || '';
+  document.getElementById('bath_place').value = r.place || '自己在家';
+  document.getElementById('bath_note').value = r.note || '';
+  clearChips('bathServiceChips');
+  const services = (r.services || '').split('、').filter(Boolean);
+  document.querySelectorAll('#bathServiceChips .chip-option').forEach(el => {
+    if (services.includes(el.textContent)) el.classList.add('selected');
+  });
+}
+function editBath(id) { startEdit('bath', id, fillBathForm, 'bathModal', '🛁 編輯洗澡紀錄'); }
+
+function fillWeightForm(r) {
+  document.getElementById('w_date').value = normalizeDateString(r.date);
+  document.getElementById('w_weight').value = r.weight || '';
+  document.getElementById('w_note').value = r.note || '';
+}
+function editWeight(id) { startEdit('weight', id, fillWeightForm, 'weightModal', '⚖️ 編輯體重紀錄'); }
+
+function fillDietForm(r) {
+  document.getElementById('diet_date').value = normalizeDateString(r.date);
+  document.getElementById('diet_water').value = r.water || '';
+  document.getElementById('diet_am').value = r.am || '';
+  document.getElementById('diet_noon').value = r.noon || '';
+  document.getElementById('diet_pm').value = r.pm || '';
+  document.getElementById('diet_snack').value = r.snack || '';
+  document.getElementById('diet_appetite').value = r.appetite || '正常 😋';
+  document.getElementById('diet_note').value = r.note || '';
+}
+function editDiet(id) { startEdit('diet', id, fillDietForm, 'dietModal', '🍽️ 編輯飲食紀錄'); }
+
+function fillVaccineForm(r) {
+  document.getElementById('vac_date').value = normalizeDateString(r.date);
+  document.getElementById('vac_cost').value = r.cost || '';
+  document.getElementById('vac_type').value = r.type || '三合一疫苗';
+  document.getElementById('vac_brand').value = r.brand || '';
+  document.getElementById('vac_next').value = normalizeDateString(r.next);
+  document.getElementById('vac_note').value = r.note || '';
+}
+function editVaccine(id) { startEdit('vaccine', id, fillVaccineForm, 'vaccineModal', '💉 編輯疫苗 / 驅蟲'); }
+
+function fillReminderForm(r) {
+  document.getElementById('rem_title').value = r.title || '';
+  document.getElementById('rem_date').value = normalizeDateString(r.date);
+  document.getElementById('rem_type').value = r.type || '📌 其他';
+  document.getElementById('rem_note').value = r.note || '';
+}
+function editReminder(id) { startEdit('reminders', id, fillReminderForm, 'reminderModal', '🔔 編輯提醒'); }
+
+function fillSupplyForm(r) {
+  document.getElementById('sup_date').value = normalizeDateString(r.date);
+  document.getElementById('sup_cat').value = r.cat || '食品';
+  updateSupplyItems(r.cat || '食品');
+  document.getElementById('sup_name').value = r.name || '';
+  document.getElementById('sup_total').value = r.total || '';
+  document.getElementById('sup_place').value = r.place || '';
+  document.getElementById('sup_brand').value = r.brand || '';
+  document.getElementById('sup_rating').value = r.rating || '';
+  document.getElementById('sup_note').value = r.note || '';
+  const container = document.getElementById('supplyItemsContainer');
+  let items = [];
+  try { items = JSON.parse(r.items || '[]'); } catch(e) {}
+  container.innerHTML = '';
+  if (!items.length) items = [{name:'', qty:'', price:''}];
+  items.forEach((item, idx) => {
+    const row = document.createElement('div');
+    row.className = 'supply-item-row';
+    row.style.cssText = 'display:grid;grid-template-columns:3fr 1fr 1.2fr auto;gap:8px;align-items:center;margin-top:8px';
+    const subtotal = (parseFloat(item.qty)||0) * (parseFloat(item.price)||0);
+    row.innerHTML = `
+      <input type="text" class="sup-item-name" placeholder="商品名稱 / 規格" value="${(item.name||'').replace(/"/g,'&quot;')}">
+      <input type="number" class="sup-item-qty" placeholder="數量" min="1" step="1" value="${item.qty||''}" oninput="calcSupplyRow(this)">
+      <input type="number" class="sup-item-price" placeholder="單價（元）" step="1" value="${item.price||''}" oninput="calcSupplyRow(this)">
+      <span style="display:flex;align-items:center;gap:4px">
+        <span class="sup-item-subtotal" style="font-family:'DM Mono',monospace;font-size:.8rem;color:var(--green);white-space:nowrap">${subtotal>0 ? 'NT$ '+subtotal.toLocaleString() : '—'}</span>
+        ${idx === 0 ? '' : '<button type="button" onclick="this.closest(\'.supply-item-row\').remove();recalcSupplyTotal()" style="background:none;border:none;color:var(--soft);cursor:pointer;font-size:.9rem;padding:2px 4px">✕</button>'}
+      </span>`;
+    container.appendChild(row);
+  });
+  recalcSupplyTotal();
+}
+function editSupply(id) { startEdit('supplies', id, fillSupplyForm, 'suppliesModal', '🛍️ 編輯用品購買'); }
 
 // ══════════════════════════════════════════
 // DELETE
 // ══════════════════════════════════════════
 async function deleteRec(sheet, id) {
   if(!confirm('確定要刪除這筆紀錄？')) return;
-  try {
-    setSyncBadge('syncing','● 刪除中');
-    await apiDelete(sheet, id);
-    db[sheet] = db[sheet].filter(r=>r.id!==id);
-    const renders = { vet:renderVet, health:renderHealth, bath:renderBath, weight:renderWeightList, diet:renderDiet, vaccine:renderVaccine, reminders:renderReminders, supplies:()=>{renderSupplies();renderSuppliesChart();} };
-    if(renders[sheet]) renders[sheet]();
-    if(sheet==='weight') renderWeightChart();
-    if(sheet==='health') { renderHealthChartBtns(); renderHealthChart(currentHealthField); renderHealthTable(); }
-    updateProfileStats();
-    setSyncBadge('ok','● 已連線'); showToast('✓ 已刪除');
-  } catch(e) { setSyncBadge('error','● 刪除失敗'); showToast('刪除失敗：'+e.message,true); }
+  (async()=>{
+    try {
+      setSyncBadge('syncing','● 刪除中');
+      const targetId = String(id);
+      await apiDelete(sheet, targetId);
+      db[sheet] = db[sheet].filter(r=>String(r.id)!==targetId);
+      if (sheet === 'vet') {
+        await deleteLinkedReminder('vet', targetId, r => r.type === '🏥 回診' && String(r.sourceId) === targetId);
+      }
+      if (sheet === 'vaccine') {
+        await deleteLinkedReminder('vaccine', targetId, r => ['💉 疫苗','🐛 驅蟲'].includes(r.type) && String(r.sourceId) === targetId);
+      }
+      const renders = { vet:renderVet, health:renderHealth, bath:renderBath, weight:renderWeightList, diet:renderDiet, vaccine:renderVaccine, reminders:renderReminders, supplies:()=>{renderSupplies();renderSuppliesChart();} };
+      if(renders[sheet]) renders[sheet]();
+      renderReminders();
+      if(sheet==='weight') renderWeightChart();
+      if(sheet==='health') { renderHealthChartBtns(); renderHealthChart(currentHealthField); renderHealthTable(); }
+      updateProfileStats();
+      setSyncBadge('ok','● 已連線'); showToast('✓ 已刪除');
+    } catch(e) { setSyncBadge('error','● 刪除失敗'); showToast('刪除失敗：'+e.message,true); }
+  })();
 }
 
 // ══════════════════════════════════════════
 // INIT — load all data
 // ══════════════════════════════════════════
 async function init() {
-  document.getElementById('headerDate').textContent = new Date().toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
+  document.getElementById('headerDate').textContent = formatHeaderToday();
 
   if(sessionStorage.getItem(ADMIN_KEY)) {
     isAdmin = true;
@@ -1574,31 +1964,18 @@ async function init() {
   }
 
   try {
-    setSyncBadge('syncing','● 載入中');
-    const [profile, vet, health, bath, weight, diet, vaccine, reminders, supplies] = await Promise.all([
-      apiRead('profile'), apiRead('vet'), apiRead('health'), apiRead('bath'),
-      apiRead('weight'), apiRead('diet'), apiRead('vaccine'), apiRead('reminders'), apiRead('supplies')
-    ]);
-    db.profile = (profile && profile[0]) ? profile[0] : {};
-    db.vet = vet || [];
-    db.health = health || [];
-    db.bath = bath || [];
-    db.weight = weight || [];
-    db.diet = diet || [];
-    db.vaccine = vaccine || [];
-    db.reminders = reminders || [];
-    db.supplies = supplies || [];
-
-    loadProfileToForm();
-    renderVet(); renderHealth(); renderBath(); renderWeightList();
-    renderDiet(); renderVaccine(); renderReminders();
-    renderHealthChartBtns();
-
-    setSyncBadge('ok','● 已連線');
+    await syncAllFromCloud(true);
   } catch(e) {
     setSyncBadge('error','● 連線失敗');
     showToast('無法連接 Google 試算表，請確認網路', true);
   }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) syncAllFromCloud(false);
+  });
+  setInterval(() => {
+    if (!document.hidden) syncAllFromCloud(false);
+  }, 45000);
 
   setTimeout(() => document.getElementById('loadingScreen').classList.add('hide'), 1600);
 }
@@ -1694,6 +2071,7 @@ function clearSupplyItems() {
 }
 
 async function saveSupply() {
+  const wasEditing = editState.sheet !== null;
   const items = getSupplyItemsData();
   const rec = {
     id: Date.now().toString(),
@@ -1712,6 +2090,11 @@ async function saveSupply() {
   setBtnLoading('suppliesSaveBtn', true);
   try {
     setSyncBadge('syncing','● 儲存中');
+    if (editState.sheet === 'supplies' && editState.id) {
+      await apiDelete('supplies', editState.id);
+      db.supplies = db.supplies.filter(r => r.id !== editState.id);
+      rec.id = editState.id;
+    }
     await apiWrite('supplies', rec);
     db.supplies.push(rec);
     renderSupplies(); renderSuppliesChart(); updateCostStats();
@@ -1720,7 +2103,8 @@ async function saveSupply() {
     document.getElementById('sup_place').value = '';
     document.getElementById('sup_rating').value = '';
     clearSupplyItems();
-    setSyncBadge('ok','● 已連線'); showToast('✓ 用品紀錄已儲存');
+    resetEditState('suppliesModal', '🛍️ 新增用品購買', 'suppliesSaveBtn');
+    setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 用品紀錄已更新' : '✓ 用品紀錄已儲存');
   } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
   setBtnLoading('suppliesSaveBtn', false);
 }
@@ -1783,7 +2167,7 @@ function renderSupplies() {
       }
     } catch(e){}
     return `<div class="record-item">
-      <div class="record-date">${r.date}</div>
+      <div class="record-date">${formatDisplayDate(r.date)}</div>
       <div class="record-content" style="flex:1">
         <div class="record-title">
           <span class="badge ${catColors[r.cat]||'badge-blue'}">${r.cat||'其他'}</span>
@@ -1797,7 +2181,7 @@ function renderSupplies() {
         ${itemsHtml}
         ${r.total?`<div class="record-cost" style="margin-top:6px">合計 NT$ ${Number(r.total).toLocaleString()}</div>`:''}
       </div>
-      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('supplies','${r.id}')">✕</button></div>`:''}
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-secondary" onclick="editSupply('${r.id}')">編輯</button><button class="btn btn-sm btn-danger" onclick="deleteRec('supplies','${r.id}')">✕</button></div>`:''}
     </div>`;
   }).join('');
 }
