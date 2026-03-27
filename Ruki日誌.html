@@ -1,0 +1,1306 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ruki 的生活日誌</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --cream: #faf6f0;
+  --warm: #fff9f2;
+  --caramel: #c8956c;
+  --caramel-light: #e8c4a0;
+  --rust: #b5541a;
+  --dark: #2c1f14;
+  --mid: #5a3e2b;
+  --soft: #9b7560;
+  --green: #6b8f6e;
+  --green-light: #a8c5ab;
+  --pink: #d4889a;
+  --blue: #7aa3b8;
+  --yellow: #d4a843;
+  --shadow: rgba(44,31,20,0.12);
+  --red: #c0392b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--cream);color:var(--dark);font-family:'Noto Serif TC',serif;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");opacity:.6}
+
+/* LOADING */
+#loadingScreen{position:fixed;inset:0;z-index:9999;background:var(--dark);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .5s}
+#loadingScreen.hide{opacity:0;pointer-events:none}
+.loading-cat{font-size:3.5rem;animation:bounce .8s ease-in-out infinite alternate}
+@keyframes bounce{from{transform:translateY(0)}to{transform:translateY(-12px)}}
+.loading-text{font-family:'Playfair Display',serif;color:var(--caramel-light);font-size:1.2rem;letter-spacing:2px}
+.loading-bar{width:200px;height:3px;background:rgba(255,255,255,.1);border-radius:99px;overflow:hidden}
+.loading-fill{height:100%;background:var(--caramel);border-radius:99px;animation:fill 1.5s ease forwards}
+@keyframes fill{from{width:0}to{width:100%}}
+
+/* LOCK SCREEN */
+#lockScreen{position:fixed;inset:0;z-index:5000;background:rgba(44,31,20,.85);backdrop-filter:blur(12px);display:none;align-items:center;justify-content:center}
+#lockScreen.show{display:flex}
+.lock-box{background:var(--warm);border-radius:20px;padding:40px;width:340px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.4)}
+.lock-icon{font-size:2.5rem;margin-bottom:12px}
+.lock-title{font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--mid);margin-bottom:6px}
+.lock-sub{font-size:.8rem;color:var(--soft);margin-bottom:24px}
+.lock-input{width:100%;padding:12px 16px;border:2px solid var(--caramel-light);border-radius:12px;background:var(--cream);font-family:'Noto Serif TC',serif;font-size:1rem;text-align:center;letter-spacing:4px;outline:none;margin-bottom:12px}
+.lock-input:focus{border-color:var(--caramel)}
+.lock-error{color:var(--red);font-size:.8rem;margin-bottom:12px;min-height:18px}
+
+/* HEADER */
+header{position:relative;z-index:10;background:var(--dark);padding:22px 40px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid var(--caramel)}
+.header-left{display:flex;align-items:center;gap:14px}
+.header-paw{font-size:2rem}
+.header-title{font-family:'Playfair Display',serif;font-size:1.75rem;color:var(--caramel-light);letter-spacing:1px}
+.header-sub{font-size:.7rem;color:var(--soft);letter-spacing:3px;text-transform:uppercase;margin-top:2px}
+.header-right{display:flex;align-items:center;gap:14px}
+.header-date{color:var(--soft);font-family:'DM Mono',monospace;font-size:.75rem}
+.sync-badge{display:flex;align-items:center;gap:6px;font-family:'DM Mono',monospace;font-size:.72rem;padding:5px 12px;border-radius:20px;background:rgba(107,143,110,.15);color:var(--green-light)}
+.sync-badge.syncing{background:rgba(212,168,67,.15);color:var(--yellow)}
+.sync-badge.error{background:rgba(192,57,43,.15);color:#e88;}
+.btn-admin{background:rgba(200,149,108,.15);border:1px solid rgba(200,149,108,.3);color:var(--caramel-light);padding:6px 14px;border-radius:20px;font-family:'Noto Serif TC',serif;font-size:.75rem;cursor:pointer;transition:all .2s}
+.btn-admin:hover{background:rgba(200,149,108,.3)}
+
+/* NAV */
+nav{position:sticky;top:0;z-index:100;background:var(--warm);border-bottom:1px solid var(--caramel-light);display:flex;overflow-x:auto;box-shadow:0 2px 12px var(--shadow)}
+nav button{padding:13px 20px;border:none;background:transparent;font-family:'Noto Serif TC',serif;font-size:.82rem;color:var(--soft);cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;transition:all .2s;display:flex;align-items:center;gap:5px}
+nav button:hover{color:var(--caramel);background:rgba(200,149,108,.06)}
+nav button.active{color:var(--rust);border-bottom-color:var(--rust);font-weight:600}
+
+/* MAIN */
+main{position:relative;z-index:1;max-width:980px;margin:0 auto;padding:32px 20px 80px}
+.tab-panel{display:none}
+.tab-panel.active{display:block;animation:fadeUp .3s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* CARD */
+.card{background:var(--warm);border:1px solid var(--caramel-light);border-radius:16px;padding:26px 30px;margin-bottom:22px;box-shadow:0 4px 20px var(--shadow)}
+.card-title{font-family:'Playfair Display',serif;font-size:1.15rem;color:var(--mid);margin-bottom:18px;padding-bottom:12px;border-bottom:1px dashed var(--caramel-light);display:flex;align-items:center;gap:8px}
+
+/* PROFILE */
+.profile-grid{display:grid;grid-template-columns:190px 1fr;gap:28px;align-items:start}
+@media(max-width:600px){.profile-grid{grid-template-columns:1fr}}
+.profile-photo-wrap{width:190px;height:190px;border-radius:50%;border:4px solid var(--caramel);overflow:hidden;background:var(--caramel-light);cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.profile-photo-wrap img{width:100%;height:100%;object-fit:cover}
+.profile-photo-placeholder{font-size:3.5rem;color:var(--soft)}
+.profile-photo-overlay{position:absolute;inset:0;background:rgba(44,31,20,.45);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .2s;color:white;font-size:.78rem;text-align:center;border-radius:50%}
+.profile-photo-wrap:hover .profile-photo-overlay{opacity:1}
+#photoInput{display:none}
+.profile-fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:480px){.profile-fields{grid-template-columns:1fr}}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:22px}
+.stat-chip{background:var(--warm);border:1px solid var(--caramel-light);border-radius:12px;padding:14px;text-align:center;box-shadow:0 2px 8px var(--shadow)}
+.stat-chip .num{font-size:1.45rem;font-family:'DM Mono',monospace;color:var(--rust)}
+.stat-chip .lbl{font-size:.68rem;color:var(--soft);margin-top:3px;letter-spacing:1px;text-transform:uppercase}
+
+/* FORM */
+.form-group{margin-bottom:14px}
+label{display:block;font-size:.78rem;color:var(--soft);margin-bottom:5px;letter-spacing:.3px}
+input[type=text],input[type=date],input[type=number],input[type=password],textarea,select{width:100%;padding:9px 13px;border:1.5px solid var(--caramel-light);border-radius:10px;background:var(--cream);color:var(--dark);font-family:'Noto Serif TC',serif;font-size:.88rem;transition:border-color .2s,box-shadow .2s;outline:none}
+input:focus,textarea:focus,select:focus{border-color:var(--caramel);box-shadow:0 0 0 3px rgba(200,149,108,.16)}
+textarea{resize:vertical;min-height:75px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:480px){.form-row{grid-template-columns:1fr}}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+@media(max-width:560px){.form-row-3{grid-template-columns:1fr 1fr}}
+
+/* BUTTONS */
+.btn{padding:9px 20px;border:none;border-radius:10px;font-family:'Noto Serif TC',serif;font-size:.85rem;cursor:pointer;transition:all .2s;font-weight:600;display:inline-flex;align-items:center;gap:5px}
+.btn-primary{background:var(--rust);color:white}
+.btn-primary:hover{background:var(--mid);transform:translateY(-1px);box-shadow:0 4px 12px rgba(181,84,26,.3)}
+.btn-primary:disabled{background:var(--soft);cursor:not-allowed;transform:none}
+.btn-secondary{background:var(--caramel-light);color:var(--mid)}
+.btn-secondary:hover{background:var(--caramel);color:white}
+.btn-danger{background:#f0e0e0;color:var(--red)}
+.btn-danger:hover{background:var(--red);color:white}
+.btn-sm{padding:5px 12px;font-size:.75rem}
+
+/* SECTION HEADER */
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px}
+.section-title{font-family:'Playfair Display',serif;font-size:1.45rem;color:var(--mid)}
+
+/* RECORD */
+.record-list{display:flex;flex-direction:column;gap:12px}
+.record-item{background:var(--cream);border:1px solid var(--caramel-light);border-radius:12px;padding:14px 18px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;transition:box-shadow .2s}
+.record-item:hover{box-shadow:0 4px 16px var(--shadow)}
+.record-date{font-family:'DM Mono',monospace;font-size:.75rem;color:var(--caramel);background:rgba(200,149,108,.12);padding:3px 9px;border-radius:6px;white-space:nowrap;flex-shrink:0}
+.record-content{flex:1}
+.record-title{font-size:.92rem;color:var(--dark);font-weight:600;margin-bottom:3px}
+.record-detail{font-size:.8rem;color:var(--soft);line-height:1.7}
+.record-cost{font-family:'DM Mono',monospace;color:var(--green);font-size:.82rem;font-weight:600;margin-top:3px}
+.record-actions{display:flex;gap:5px;flex-shrink:0}
+
+/* BADGE */
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.7rem;font-weight:600;margin:1px}
+.badge-blue{background:rgba(122,163,184,.18);color:var(--blue)}
+.badge-green{background:rgba(107,143,110,.15);color:var(--green)}
+.badge-pink{background:rgba(212,136,154,.18);color:var(--pink)}
+.badge-rust{background:rgba(181,84,26,.12);color:var(--rust)}
+.badge-yellow{background:rgba(212,168,67,.18);color:var(--yellow)}
+
+/* CHIP SELECT */
+.chip-select{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip-option{padding:4px 12px;border-radius:20px;border:1.5px solid var(--caramel-light);background:transparent;cursor:pointer;font-family:'Noto Serif TC',serif;font-size:.78rem;color:var(--soft);transition:all .15s}
+.chip-option.selected{background:var(--rust);color:white;border-color:var(--rust)}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;z-index:1000;background:rgba(44,31,20,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px}
+.modal-overlay.open{display:flex;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:var(--warm);border-radius:20px;width:100%;max-width:580px;max-height:92vh;overflow-y:auto;padding:28px 30px;box-shadow:0 20px 60px rgba(44,31,20,.3);animation:slideUp .28s ease}
+@keyframes slideUp{from{transform:translateY(28px);opacity:0}to{transform:translateY(0);opacity:1}}
+.modal-title{font-family:'Playfair Display',serif;font-size:1.25rem;color:var(--mid);margin-bottom:18px}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+
+/* HEALTH INDICES */
+.index-section{margin-bottom:16px}
+.index-section-title{font-size:.78rem;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;padding:6px 0;border-bottom:1px solid var(--caramel-light)}
+.index-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:560px){.index-grid{grid-template-columns:repeat(2,1fr)}}
+.index-field label{font-size:.72rem}
+.index-field input{font-size:.82rem;padding:7px 10px}
+
+/* CHART */
+.chart-container{position:relative;height:260px;margin-top:12px}
+.chart-btns{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+
+/* REMINDER */
+.reminder-item{display:flex;align-items:center;gap:10px;padding:11px 15px;border-radius:10px;margin-bottom:8px;font-size:.85rem}
+.reminder-item.upcoming{background:rgba(107,143,110,.1);border:1px solid rgba(107,143,110,.28)}
+.reminder-item.today{background:rgba(212,168,67,.12);border:1px solid rgba(212,168,67,.35)}
+.reminder-item.past{background:rgba(181,84,26,.07);border:1px solid rgba(181,84,26,.18)}
+.reminder-icon{font-size:1.2rem}
+.reminder-text{flex:1;color:var(--dark)}
+.reminder-days{font-family:'DM Mono',monospace;font-size:.78rem}
+
+/* WEIGHT TREND */
+.trend-up{color:var(--red)}
+.trend-down{color:var(--green)}
+.trend-same{color:var(--soft)}
+
+/* EMPTY */
+.empty-state{text-align:center;padding:44px 20px;color:var(--soft)}
+.empty-state .icon{font-size:2.8rem;margin-bottom:10px}
+.empty-state p{font-size:.87rem;line-height:1.9}
+
+/* TOAST */
+#toast{position:fixed;bottom:24px;right:24px;z-index:9000;background:var(--dark);color:var(--caramel-light);padding:10px 20px;border-radius:30px;font-size:.8rem;font-family:'DM Mono',monospace;opacity:0;transition:opacity .35s;pointer-events:none;max-width:300px;text-align:center}
+#toast.show{opacity:1}
+#toast.err{background:var(--red);color:white}
+
+/* HEALTH TABLE */
+.health-table-wrap{overflow-x:auto;margin-top:12px}
+table{width:100%;border-collapse:collapse;font-size:.78rem;white-space:nowrap}
+th{text-align:left;padding:6px 10px;color:var(--soft);font-size:.68rem;text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid var(--caramel-light);background:var(--cream)}
+td{padding:8px 10px;border-bottom:1px solid rgba(200,149,108,.12);color:var(--dark)}
+tr:last-child td{border-bottom:none}
+td.hi{color:var(--red);font-weight:600}
+td.lo{color:var(--blue);font-weight:600}
+td.ok{color:var(--green)}
+
+/* SPINNER */
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loadingScreen">
+  <div class="loading-cat">🐾</div>
+  <div class="loading-text">載入 Ruki 的日誌中…</div>
+  <div class="loading-bar"><div class="loading-fill"></div></div>
+</div>
+
+<!-- LOCK SCREEN -->
+<div id="lockScreen">
+  <div class="lock-box">
+    <div class="lock-icon">🔐</div>
+    <div class="lock-title">管理員登入</div>
+    <div class="lock-sub">輸入密碼以進行新增 / 編輯</div>
+    <input type="password" class="lock-input" id="lockInput" placeholder="••••••••" onkeydown="if(event.key==='Enter')doUnlock()">
+    <div class="lock-error" id="lockError"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="doUnlock()">解鎖</button>
+  </div>
+</div>
+
+<header>
+  <div class="header-left">
+    <div class="header-paw">🐾</div>
+    <div>
+      <div class="header-title" id="headerCatName">Ruki 的生活日誌</div>
+      <div class="header-sub">Cat Life Diary · 底佳動物醫院</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="sync-badge" id="syncBadge">● 連線中</div>
+    <div class="header-date" id="headerDate"></div>
+    <button class="btn-admin" id="adminBtn" onclick="toggleAdmin()">🔓 管理</button>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="switchTab('profile')">🐱 基本資料</button>
+  <button onclick="switchTab('vet')">🏥 看診紀錄</button>
+  <button onclick="switchTab('health')">📊 健康檢查</button>
+  <button onclick="switchTab('bath')">🛁 洗澡紀錄</button>
+  <button onclick="switchTab('weight')">⚖️ 體重追蹤</button>
+  <button onclick="switchTab('diet')">🍽️ 飲食日誌</button>
+  <button onclick="switchTab('vaccine')">💉 疫苗驅蟲</button>
+  <button onclick="switchTab('reminder')">🔔 提醒事項</button>
+</nav>
+
+<main>
+
+<!-- PROFILE -->
+<div id="tab-profile" class="tab-panel active">
+  <div class="section-header">
+    <div class="section-title">基本資料</div>
+    <button class="btn btn-primary" onclick="requireAdmin(saveProfile)">💾 儲存資料</button>
+  </div>
+  <div class="card">
+    <div class="profile-grid">
+      <div>
+        <div class="profile-photo-wrap" onclick="requireAdmin(()=>document.getElementById('photoInput').click())">
+          <img id="profilePhoto" src="" style="display:none">
+          <div class="profile-photo-placeholder" id="photoPlaceholder">🐱</div>
+          <div class="profile-photo-overlay">點擊換照片</div>
+        </div>
+        <input type="file" id="photoInput" accept="image/*" onchange="handlePhoto(event)">
+        <div style="text-align:center;margin-top:8px;font-size:.72rem;color:var(--soft)">點擊圓圖更換照片</div>
+      </div>
+      <div class="profile-fields">
+        <div class="form-group" style="grid-column:1/-1"><label>貓咪名字</label><input type="text" id="catName" placeholder="輸入名字…"></div>
+        <div class="form-group"><label>生日</label><input type="date" id="catBirthday"></div>
+        <div class="form-group"><label>性別</label><select id="catGender"><option value="">請選擇</option><option>男生 ♂</option><option>女生 ♀</option></select></div>
+        <div class="form-group"><label>品種</label><input type="text" id="catBreed" placeholder="例：米克斯"></div>
+        <div class="form-group"><label>毛色 / 花色</label><input type="text" id="catColor" placeholder="例：橘白"></div>
+        <div class="form-group"><label>晶片號碼</label><input type="text" id="catChip" placeholder="15碼"></div>
+        <div class="form-group"><label>結紮狀態</label><select id="catNeuter"><option value="">請選擇</option><option>已結紮</option><option>未結紮</option></select></div>
+        <div class="form-group" style="grid-column:1/-1"><label>常用獸醫院 / 電話</label><input type="text" id="catVetClinic" placeholder="例：底佳動物醫院  07-3658891"></div>
+        <div class="form-group" style="grid-column:1/-1"><label>備忘 / 個性描述</label><textarea id="catMemo" rows="3" placeholder="個性、習慣、特殊注意事項…"></textarea></div>
+      </div>
+    </div>
+  </div>
+  <div class="stats-row">
+    <div class="stat-chip"><div class="num" id="statAge">—</div><div class="lbl">出生天數</div></div>
+    <div class="stat-chip"><div class="num" id="statAgeYear">—</div><div class="lbl">幾歲幾個月</div></div>
+    <div class="stat-chip"><div class="num" id="statLastVet">—</div><div class="lbl">上次看診</div></div>
+    <div class="stat-chip"><div class="num" id="statLastBath">—</div><div class="lbl">上次洗澡</div></div>
+    <div class="stat-chip"><div class="num" id="statWeight">—</div><div class="lbl">最新體重(kg)</div></div>
+    <div class="stat-chip"><div class="num" id="statVetCount">—</div><div class="lbl">總看診次數</div></div>
+  </div>
+</div>
+
+<!-- VET -->
+<div id="tab-vet" class="tab-panel">
+  <div class="section-header">
+    <div class="section-title">看診紀錄</div>
+    <button class="btn btn-primary" onclick="requireAdmin(()=>openModal('vetModal'))">＋ 新增看診</button>
+  </div>
+  <div id="vetList" class="record-list"><div class="empty-state"><div class="icon">🏥</div><p>載入中…</p></div></div>
+</div>
+
+<!-- HEALTH -->
+<div id="tab-health" class="tab-panel">
+  <div class="section-header">
+    <div class="section-title">健康檢查</div>
+    <button class="btn btn-primary" onclick="requireAdmin(()=>openModal('healthModal'))">＋ 新增健檢</button>
+  </div>
+  <div class="card">
+    <div class="card-title">📈 指數變化趨勢</div>
+    <div class="chart-btns" id="chartBtns"></div>
+    <div class="chart-container"><canvas id="healthChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">📋 歷次數值比較表</div>
+    <div class="health-table-wrap" id="healthTable"></div>
+  </div>
+  <div id="healthList" class="record-list"><div class="empty-state"><div class="icon">📊</div><p>載入中…</p></div></div>
+</div>
+
+<!-- BATH -->
+<div id="tab-bath" class="tab-panel">
+  <div class="section-header">
+    <div class="section-title">洗澡紀錄</div>
+    <button class="btn btn-primary" onclick="requireAdmin(()=>openModal('bathModal'))">＋ 新增洗澡</button>
+  </div>
+  <div id="bathList" class="record-list"><div class="empty-state"><div class="icon">🛁</div><p>載入中…</p></div></div>
+</div>
+
+<!-- WEIGHT -->
+<div id="tab-weight" class="tab-panel">
+  <div class="section-header">
+    <div class="section-title">體重追蹤</div>
+    <button class="btn btn-primary" onclick="requireAdmin(()=>openModal('weightModal'))">＋ 記錄體重</button>
+  </div>
+  <div class="card">
+    <div class="card-title">📉 體重曲線</div>
+    <div class="chart-container"><canvas id="weightChart"></canvas></div>
+  </div>
+  <div id="weightList" class="record-list"><div class="empty-state"><div class="icon">⚖️</div><p>載入中…</p></div></div>
+</div>
+
+<!-- DIET -->
+<div id="tab-diet" class="tab-panel">
+  <div class="section-header">
+    <div class="section-title">飲食日誌</div>
+    <button class="btn btn-primary" onclick="requireAdmin(()=>openModal('dietModal'))">＋ 新增紀錄</button>
+  </div>
+  <div id="dietList" class="record-list"><div class="empty-state"><div class="icon">🍽️</div><p>載入中…</p></div></div>
+</div>
+
+<!-- VACCINE -->
+<div id="tab-vaccine" class="tab-panel">
+  <div class="section-header">
+    <div class="section-title">疫苗 & 驅蟲</div>
+    <button class="btn btn-primary" onclick="requireAdmin(()=>openModal('vaccineModal'))">＋ 新增紀錄</button>
+  </div>
+  <div id="vaccineList" class="record-list"><div class="empty-state"><div class="icon">💉</div><p>載入中…</p></div></div>
+</div>
+
+<!-- REMINDER -->
+<div id="tab-reminder" class="tab-panel">
+  <div class="section-header">
+    <div class="section-title">提醒事項</div>
+    <button class="btn btn-primary" onclick="requireAdmin(()=>openModal('reminderModal'))">＋ 新增提醒</button>
+  </div>
+  <div id="reminderList"><div class="empty-state"><div class="icon">🔔</div><p>載入中…</p></div></div>
+</div>
+
+</main>
+
+<!-- ═══ MODALS ═══ -->
+
+<!-- VET -->
+<div class="modal-overlay" id="vetModal">
+  <div class="modal">
+    <div class="modal-title">🏥 新增看診紀錄</div>
+    <div class="form-row">
+      <div class="form-group"><label>看診日期</label><input type="date" id="vet_date"></div>
+      <div class="form-group"><label>費用（元）</label><input type="number" id="vet_cost" placeholder="0"></div>
+    </div>
+    <div class="form-group"><label>主訴 / 症狀</label><input type="text" id="vet_reason" placeholder="例：嘔吐、食慾不振…"></div>
+    <div class="form-group"><label>診斷結果</label><input type="text" id="vet_diagnosis" placeholder="醫生診斷…"></div>
+    <div class="form-group"><label>進行的檢查項目</label>
+      <div class="chip-select" id="vetCheckChips">
+        <div class="chip-option" onclick="toggleChip(this)">理學檢查</div>
+        <div class="chip-option" onclick="toggleChip(this)">血液檢查</div>
+        <div class="chip-option" onclick="toggleChip(this)">生化檢查</div>
+        <div class="chip-option" onclick="toggleChip(this)">尿液檢查</div>
+        <div class="chip-option" onclick="toggleChip(this)">X光</div>
+        <div class="chip-option" onclick="toggleChip(this)">超音波</div>
+        <div class="chip-option" onclick="toggleChip(this)">糞便檢查</div>
+        <div class="chip-option" onclick="toggleChip(this)">眼科</div>
+        <div class="chip-option" onclick="toggleChip(this)">牙科</div>
+        <div class="chip-option" onclick="toggleChip(this)">內分泌</div>
+      </div>
+      <input type="text" id="vet_extra_check" placeholder="其他項目…" style="margin-top:8px">
+    </div>
+    <div class="form-group"><label>用藥 / 處方</label><textarea id="vet_medicine" rows="2" placeholder="藥物名稱、劑量…"></textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label>下次回診日期</label><input type="date" id="vet_followup"></div>
+      <div class="form-group"><label>醫院 / 醫師</label><input type="text" id="vet_doctor" placeholder="底佳動物醫院"></div>
+    </div>
+    <div class="form-group"><label>備註</label><textarea id="vet_note" rows="2"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('vetModal')">取消</button>
+      <button class="btn btn-primary" id="vetSaveBtn" onclick="saveVet()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- HEALTH -->
+<div class="modal-overlay" id="healthModal">
+  <div class="modal">
+    <div class="modal-title">📊 新增健康檢查</div>
+    <div class="form-row">
+      <div class="form-group"><label>檢查日期</label><input type="date" id="h_date"></div>
+      <div class="form-group"><label>費用（元）</label><input type="number" id="h_cost" placeholder="0"></div>
+    </div>
+    <div class="form-group"><label>體重 (kg)</label><input type="number" id="h_weight" step="0.01" placeholder="例：4.26"></div>
+
+    <div class="index-section">
+      <div class="index-section-title">🧪 生化檢查</div>
+      <div class="index-grid">
+        <div class="index-field form-group"><label>GLU 血糖</label><input type="number" id="h_glu" step="0.1" placeholder="71-148"></div>
+        <div class="index-field form-group"><label>BUN 尿素氮</label><input type="number" id="h_bun" step="0.1" placeholder="17.6-32.8"></div>
+        <div class="index-field form-group"><label>CRE 肌酐</label><input type="number" id="h_cre" step="0.01" placeholder="0.8-1.8"></div>
+        <div class="index-field form-group"><label>NH3 血氨</label><input type="number" id="h_nh3" step="0.1" placeholder="23-78"></div>
+        <div class="index-field form-group"><label>TCHO 總膽固醇</label><input type="number" id="h_tcho" step="0.1" placeholder="89-176"></div>
+        <div class="index-field form-group"><label>TG 三酸甘油</label><input type="number" id="h_tg" step="0.1" placeholder="17-104"></div>
+        <div class="index-field form-group"><label>TBIL 總膽紅素</label><input type="number" id="h_tbil" step="0.01" placeholder="0.1-0.4"></div>
+        <div class="index-field form-group"><label>Ca 鈣</label><input type="number" id="h_ca" step="0.1" placeholder="8.8-11.9"></div>
+        <div class="index-field form-group"><label>IP 磷</label><input type="number" id="h_ip" step="0.1" placeholder="2.6-6.0"></div>
+        <div class="index-field form-group"><label>TP 總蛋白</label><input type="number" id="h_tp" step="0.01" placeholder="5.7-7.8"></div>
+        <div class="index-field form-group"><label>ALB 白蛋白</label><input type="number" id="h_alb" step="0.01" placeholder="2.3-3.5"></div>
+        <div class="index-field form-group"><label>GLOB</label><input type="number" id="h_glob" step="0.1" placeholder=""></div>
+        <div class="index-field form-group"><label>GOT</label><input type="number" id="h_got" step="0.1" placeholder="18-51"></div>
+        <div class="index-field form-group"><label>GPT (ALT)</label><input type="number" id="h_gpt" step="0.1" placeholder="22-84"></div>
+        <div class="index-field form-group"><label>CPK</label><input type="number" id="h_cpk" step="0.1" placeholder="87-309"></div>
+        <div class="index-field form-group"><label>LDH</label><input type="number" id="h_ldh" step="0.1" placeholder="35-187"></div>
+        <div class="index-field form-group"><label>v-AMYL 澱粉酶</label><input type="number" id="h_amyl" step="0.1" placeholder="200-1900"></div>
+        <div class="index-field form-group"><label>GGT</label><input type="number" id="h_ggt" step="0.1" placeholder="1-10"></div>
+        <div class="index-field form-group"><label>ALP (≥1歲)</label><input type="number" id="h_alp1" step="0.1" placeholder="38-165"></div>
+        <div class="index-field form-group"><label>ALP (&lt;1歲)</label><input type="number" id="h_alp2" step="0.1" placeholder="77-358"></div>
+        <div class="index-field form-group"><label>MG 鎂</label><input type="number" id="h_mg" step="0.01" placeholder="1.8-2.7"></div>
+        <div class="index-field form-group"><label>Na 鈉</label><input type="number" id="h_na" step="0.1" placeholder="147-156"></div>
+        <div class="index-field form-group"><label>K 鉀</label><input type="number" id="h_k" step="0.01" placeholder="3.4-4.6"></div>
+        <div class="index-field form-group"><label>Cl 氯</label><input type="number" id="h_cl" step="0.1" placeholder="107-120"></div>
+        <div class="index-field form-group"><label>TCO2</label><input type="number" id="h_tco2" step="0.1" placeholder="20-30"></div>
+        <div class="index-field form-group"><label>v-Lipase</label><input type="number" id="h_lipase" step="0.1" placeholder="0-30 (貓)"></div>
+        <div class="index-field form-group"><label>BUN/CREA</label><input type="number" id="h_bun_crea" step="0.1" placeholder=""></div>
+        <div class="index-field form-group"><label>ALB/GLOB</label><input type="number" id="h_alb_glob" step="0.01" placeholder=""></div>
+      </div>
+    </div>
+
+    <div class="index-section">
+      <div class="index-section-title">🩸 血液檢查</div>
+      <div class="index-grid">
+        <div class="index-field form-group"><label>WBC 白血球</label><input type="number" id="h_wbc" step="0.01" placeholder="5.5-19.5"></div>
+        <div class="index-field form-group"><label>RBC 紅血球</label><input type="number" id="h_rbc" step="0.01" placeholder="5.0-10.0"></div>
+        <div class="index-field form-group"><label>HGB/HB 血紅素</label><input type="number" id="h_hgb" step="0.1" placeholder="8-15"></div>
+        <div class="index-field form-group"><label>HCT 血球容積</label><input type="number" id="h_hct" step="0.1" placeholder="24-45"></div>
+        <div class="index-field form-group"><label>MCV</label><input type="number" id="h_mcv" step="0.1" placeholder="39-55"></div>
+        <div class="index-field form-group"><label>MCH</label><input type="number" id="h_mch" step="0.1" placeholder="13-17"></div>
+        <div class="index-field form-group"><label>MCHC</label><input type="number" id="h_mchc" step="0.1" placeholder="31-35"></div>
+        <div class="index-field form-group"><label>RDW</label><input type="number" id="h_rdw" step="0.1" placeholder="17-22"></div>
+        <div class="index-field form-group"><label>PLT 血小板</label><input type="number" id="h_plt" step="0.1" placeholder="200-800"></div>
+        <div class="index-field form-group"><label>MPV</label><input type="number" id="h_mpv" step="0.1" placeholder="6.5-15.0"></div>
+        <div class="index-field form-group"><label>PCT</label><input type="number" id="h_pct" step="0.001" placeholder=""></div>
+        <div class="index-field form-group"><label>PDW</label><input type="number" id="h_pdw" step="0.1" placeholder=""></div>
+        <div class="index-field form-group"><label>LYM 淋巴球</label><input type="number" id="h_lym" step="0.01" placeholder="1.5-7.0"></div>
+        <div class="index-field form-group"><label>MONO 單核球</label><input type="number" id="h_mono" step="0.01" placeholder="0.0-0.9"></div>
+        <div class="index-field form-group"><label>GRA 顆粒球</label><input type="number" id="h_gra" step="0.01" placeholder="2.5-14.3"></div>
+        <div class="index-field form-group"><label>EOS 嗜酸性球</label><input type="number" id="h_eos" step="0.01" placeholder="0.0-1.5"></div>
+      </div>
+    </div>
+
+    <div class="index-section">
+      <div class="index-section-title">🔬 內分泌檢查</div>
+      <div class="index-grid">
+        <div class="index-field form-group"><label>T4 甲狀腺素</label><input type="number" id="h_t4" step="0.01" placeholder="0.9-3.7"></div>
+        <div class="index-field form-group"><label>TSH</label><input type="number" id="h_tsh" step="0.001" placeholder="≤0.5"></div>
+        <div class="index-field form-group"><label>CORTISOL 皮質醇</label><input type="number" id="h_cortisol" step="0.01" placeholder="1.0-6.0"></div>
+        <div class="index-field form-group"><label>BILE ACID 膽汁酸</label><input type="number" id="h_bile" step="0.1" placeholder="≤5.0"></div>
+        <div class="index-field form-group"><label>fructosamine</label><input type="number" id="h_fructosamine" step="0.1"></div>
+        <div class="index-field form-group"><label>CPL</label><input type="number" id="h_cpl" step="0.1"></div>
+        <div class="index-field form-group"><label>FPL</label><input type="number" id="h_fpl" step="0.1"></div>
+        <div class="index-field form-group"><label>V-SAA</label><input type="number" id="h_vsaa" step="0.1"></div>
+      </div>
+    </div>
+
+    <div class="form-group"><label>備註</label><textarea id="h_note" rows="2"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('healthModal')">取消</button>
+      <button class="btn btn-primary" id="healthSaveBtn" onclick="saveHealth()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- BATH -->
+<div class="modal-overlay" id="bathModal">
+  <div class="modal">
+    <div class="modal-title">🛁 新增洗澡紀錄</div>
+    <div class="form-row">
+      <div class="form-group"><label>洗澡日期</label><input type="date" id="bath_date"></div>
+      <div class="form-group"><label>費用（元）</label><input type="number" id="bath_cost" placeholder="0"></div>
+    </div>
+    <div class="form-group"><label>地點</label>
+      <select id="bath_place"><option>自己在家</option><option>寵物美容店</option><option>動物醫院</option><option>其他</option></select>
+    </div>
+    <div class="form-group"><label>服務項目</label>
+      <div class="chip-select" id="bathServiceChips">
+        <div class="chip-option" onclick="toggleChip(this)">洗澡吹乾</div>
+        <div class="chip-option" onclick="toggleChip(this)">剃毛</div>
+        <div class="chip-option" onclick="toggleChip(this)">剪毛造型</div>
+        <div class="chip-option" onclick="toggleChip(this)">剪指甲</div>
+        <div class="chip-option" onclick="toggleChip(this)">清耳朵</div>
+        <div class="chip-option" onclick="toggleChip(this)">擠肛門腺</div>
+        <div class="chip-option" onclick="toggleChip(this)">梳毛</div>
+      </div>
+    </div>
+    <div class="form-group"><label>備註</label><textarea id="bath_note" rows="2"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('bathModal')">取消</button>
+      <button class="btn btn-primary" id="bathSaveBtn" onclick="saveBath()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- WEIGHT -->
+<div class="modal-overlay" id="weightModal">
+  <div class="modal">
+    <div class="modal-title">⚖️ 記錄體重</div>
+    <div class="form-row">
+      <div class="form-group"><label>量測日期</label><input type="date" id="w_date"></div>
+      <div class="form-group"><label>體重 (kg)</label><input type="number" id="w_weight" step="0.01" placeholder="例：4.26"></div>
+    </div>
+    <div class="form-group"><label>備註</label><textarea id="w_note" rows="2" placeholder="飯前/飯後、特殊狀況…"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('weightModal')">取消</button>
+      <button class="btn btn-primary" id="weightSaveBtn" onclick="saveWeight()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- DIET -->
+<div class="modal-overlay" id="dietModal">
+  <div class="modal">
+    <div class="modal-title">🍽️ 新增飲食紀錄</div>
+    <div class="form-row">
+      <div class="form-group"><label>日期</label><input type="date" id="diet_date"></div>
+      <div class="form-group"><label>飲水量 (ml)</label><input type="number" id="diet_water" placeholder="例：150"></div>
+    </div>
+    <div class="form-group"><label>早餐</label><input type="text" id="diet_am" placeholder="食物 / 份量…"></div>
+    <div class="form-group"><label>午餐</label><input type="text" id="diet_noon" placeholder="食物 / 份量…"></div>
+    <div class="form-group"><label>晚餐</label><input type="text" id="diet_pm" placeholder="食物 / 份量…"></div>
+    <div class="form-group"><label>點心 / 零食</label><input type="text" id="diet_snack" placeholder="罐罐、零食…"></div>
+    <div class="form-group"><label>食慾狀況</label>
+      <select id="diet_appetite"><option>正常 😋</option><option>食慾很好 🤩</option><option>食慾稍差 😐</option><option>幾乎不吃 😟</option></select>
+    </div>
+    <div class="form-group"><label>備註</label><textarea id="diet_note" rows="2"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('dietModal')">取消</button>
+      <button class="btn btn-primary" id="dietSaveBtn" onclick="saveDiet()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- VACCINE -->
+<div class="modal-overlay" id="vaccineModal">
+  <div class="modal">
+    <div class="modal-title">💉 新增疫苗 / 驅蟲</div>
+    <div class="form-row">
+      <div class="form-group"><label>日期</label><input type="date" id="vac_date"></div>
+      <div class="form-group"><label>費用（元）</label><input type="number" id="vac_cost" placeholder="0"></div>
+    </div>
+    <div class="form-group"><label>種類</label>
+      <select id="vac_type"><option>三合一疫苗</option><option>狂犬病疫苗</option><option>體內驅蟲</option><option>體外驅蟲（滴劑）</option><option>體外驅蟲（口服）</option><option>心絲蟲預防</option><option>其他</option></select>
+    </div>
+    <div class="form-group"><label>藥品 / 品牌</label><input type="text" id="vac_brand" placeholder="例：Broadline、Revolution…"></div>
+    <div class="form-group"><label>下次施打日期</label><input type="date" id="vac_next"></div>
+    <div class="form-group"><label>備註</label><textarea id="vac_note" rows="2"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('vaccineModal')">取消</button>
+      <button class="btn btn-primary" id="vaccineSaveBtn" onclick="saveVaccine()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- REMINDER -->
+<div class="modal-overlay" id="reminderModal">
+  <div class="modal">
+    <div class="modal-title">🔔 新增提醒</div>
+    <div class="form-group"><label>提醒標題</label><input type="text" id="rem_title" placeholder="例：疫苗到期、定期健檢…"></div>
+    <div class="form-row">
+      <div class="form-group"><label>提醒日期</label><input type="date" id="rem_date"></div>
+      <div class="form-group"><label>類型</label>
+        <select id="rem_type"><option>💉 疫苗</option><option>📊 健檢</option><option>🐛 驅蟲</option><option>🏥 回診</option><option>🛁 洗澡</option><option>📌 其他</option></select>
+      </div>
+    </div>
+    <div class="form-group"><label>備註</label><textarea id="rem_note" rows="2"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('reminderModal')">取消</button>
+      <button class="btn btn-primary" id="reminderSaveBtn" onclick="saveReminder()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════
+const API_URL = 'https://script.google.com/macros/s/AKfycbx8EDj9gqI9_vEg9NrEtrhoqYi7dXqI4nEeYyHV6cFAay9JJmJU8EOgKsIa4tzyRpal/exec';
+const ADMIN_KEY = 'ruki_admin_unlocked';
+
+let isAdmin = false;
+let db = { profile:{}, vet:[], health:[], bath:[], weight:[], diet:[], vaccine:[], reminders:[] };
+
+// ══════════════════════════════════════════
+// API
+// ══════════════════════════════════════════
+async function apiRead(sheet) {
+  const r = await fetch(`${API_URL}?sheet=${sheet}`);
+  const j = await r.json();
+  return j.ok ? j.data : [];
+}
+
+async function apiWrite(sheet, data) {
+  const pwd = sessionStorage.getItem(ADMIN_KEY);
+  const r = await fetch(API_URL, {
+    method:'POST',
+    body: JSON.stringify({ action:'write', sheet, data, password: pwd })
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || '儲存失敗');
+  return j;
+}
+
+async function apiDelete(sheet, id) {
+  const pwd = sessionStorage.getItem(ADMIN_KEY);
+  const r = await fetch(API_URL, {
+    method:'POST',
+    body: JSON.stringify({ action:'delete', sheet, id, password: pwd })
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || '刪除失敗');
+  return j;
+}
+
+async function apiWriteProfile(data) {
+  const pwd = sessionStorage.getItem(ADMIN_KEY);
+  const r = await fetch(API_URL, {
+    method:'POST',
+    body: JSON.stringify({ action:'writeProfile', sheet:'profile', data, password: pwd })
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || '儲存失敗');
+  return j;
+}
+
+// ══════════════════════════════════════════
+// ADMIN
+// ══════════════════════════════════════════
+function toggleAdmin() {
+  if (isAdmin) {
+    isAdmin = false;
+    sessionStorage.removeItem(ADMIN_KEY);
+    document.getElementById('adminBtn').textContent = '🔓 管理';
+    showToast('已登出管理模式');
+  } else {
+    document.getElementById('lockScreen').classList.add('show');
+    document.getElementById('lockInput').value = '';
+    document.getElementById('lockError').textContent = '';
+    setTimeout(() => document.getElementById('lockInput').focus(), 100);
+  }
+}
+
+async function doUnlock() {
+  const pwd = document.getElementById('lockInput').value;
+  // Verify password via API
+  try {
+    setSyncBadge('syncing', '驗證中…');
+    const r = await fetch(API_URL, {
+      method:'POST',
+      body: JSON.stringify({ action:'write', sheet:'_verify', data:{}, password: pwd })
+    });
+    const j = await r.json();
+    if (j.error === '密碼錯誤') {
+      document.getElementById('lockError').textContent = '密碼錯誤，請再試一次';
+      setSyncBadge('ok', '● 已連線');
+      return;
+    }
+    // Any other response (including ok or unknown sheet) means password is correct
+    isAdmin = true;
+    sessionStorage.setItem(ADMIN_KEY, pwd);
+    document.getElementById('lockScreen').classList.remove('show');
+    document.getElementById('adminBtn').textContent = '🔒 登出管理';
+    showToast('✓ 管理員模式已啟用');
+    setSyncBadge('ok', '● 已連線');
+  } catch(e) {
+    document.getElementById('lockError').textContent = '連線失敗，請稍後再試';
+    setSyncBadge('error', '● 連線失敗');
+  }
+}
+
+function requireAdmin(fn) {
+  if (isAdmin) { fn(); return; }
+  document.getElementById('lockScreen').classList.add('show');
+  document.getElementById('lockInput').value = '';
+  document.getElementById('lockError').textContent = '';
+  // Store pending action
+  window._pendingAdminFn = fn;
+  setTimeout(() => document.getElementById('lockInput').focus(), 100);
+}
+
+// Override doUnlock to also run pending fn
+const _origDoUnlock = doUnlock;
+async function doUnlock() {
+  const pwd = document.getElementById('lockInput').value;
+  try {
+    setSyncBadge('syncing', '驗證中…');
+    const r = await fetch(API_URL, {
+      method:'POST',
+      body: JSON.stringify({ action:'write', sheet:'_verify', data:{}, password: pwd })
+    });
+    const j = await r.json();
+    if (j.error === '密碼錯誤') {
+      document.getElementById('lockError').textContent = '密碼錯誤，請再試一次';
+      setSyncBadge('ok', '● 已連線');
+      return;
+    }
+    isAdmin = true;
+    sessionStorage.setItem(ADMIN_KEY, pwd);
+    document.getElementById('lockScreen').classList.remove('show');
+    document.getElementById('adminBtn').textContent = '🔒 登出管理';
+    showToast('✓ 管理員模式已啟用');
+    setSyncBadge('ok', '● 已連線');
+    if (window._pendingAdminFn) { window._pendingAdminFn(); window._pendingAdminFn = null; }
+  } catch(e) {
+    document.getElementById('lockError').textContent = '連線失敗，請稍後再試';
+    setSyncBadge('error', '● 連線失敗');
+  }
+}
+
+// ══════════════════════════════════════════
+// UI HELPERS
+// ══════════════════════════════════════════
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  const tabs = ['profile','vet','health','bath','weight','diet','vaccine','reminder'];
+  document.querySelectorAll('nav button')[tabs.indexOf(name)].classList.add('active');
+  if (name === 'weight') renderWeightChart();
+  if (name === 'health') { renderHealthChartBtns(); renderHealthChart(currentHealthField); renderHealthTable(); }
+  if (name === 'reminder') renderReminders();
+}
+
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  const today = new Date().toISOString().split('T')[0];
+  const d = document.querySelector(`#${id} input[type=date]`);
+  if (d && !d.value) d.value = today;
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if(e.target===o) o.classList.remove('open'); }));
+
+function toggleChip(el) { el.classList.toggle('selected'); }
+function getSelectedChips(id) { return Array.from(document.querySelectorAll(`#${id} .chip-option.selected`)).map(c=>c.textContent); }
+function clearChips(id) { document.querySelectorAll(`#${id} .chip-option`).forEach(c=>c.classList.remove('selected')); }
+
+function setSyncBadge(state, text) {
+  const b = document.getElementById('syncBadge');
+  b.className = 'sync-badge ' + state;
+  b.textContent = text;
+}
+
+let toastTimer;
+function showToast(msg, isErr=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show' + (isErr ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = '', 3000);
+}
+
+function setBtnLoading(id, loading) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.innerHTML = loading ? '<span class="spinner"></span> 儲存中…' : '儲存';
+}
+
+function clearInputs(ids) { ids.forEach(id => { const el=document.getElementById(id); if(el) el.value=''; }); }
+
+// ══════════════════════════════════════════
+// PHOTO
+// ══════════════════════════════════════════
+function handlePhoto(e) {
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    db.profile.photo = ev.target.result;
+    updatePhotoUI();
+  };
+  reader.readAsDataURL(file);
+}
+function updatePhotoUI() {
+  const img = document.getElementById('profilePhoto');
+  const ph = document.getElementById('photoPlaceholder');
+  if (db.profile.photo) { img.src = db.profile.photo; img.style.display='block'; ph.style.display='none'; }
+  else { img.style.display='none'; ph.style.display='block'; }
+}
+
+// ══════════════════════════════════════════
+// PROFILE
+// ══════════════════════════════════════════
+async function saveProfile() {
+  const p = {
+    name: document.getElementById('catName').value,
+    birthday: document.getElementById('catBirthday').value,
+    gender: document.getElementById('catGender').value,
+    breed: document.getElementById('catBreed').value,
+    color: document.getElementById('catColor').value,
+    chip: document.getElementById('catChip').value,
+    neuter: document.getElementById('catNeuter').value,
+    memo: document.getElementById('catMemo').value,
+    vetClinic: document.getElementById('catVetClinic').value,
+    photo: db.profile.photo || ''
+  };
+  try {
+    setSyncBadge('syncing', '● 儲存中');
+    await apiWriteProfile(p);
+    db.profile = p;
+    updateProfileStats();
+    updateHeader();
+    setSyncBadge('ok', '● 已連線');
+    showToast('✓ 基本資料已儲存');
+  } catch(e) {
+    setSyncBadge('error', '● 儲存失敗');
+    showToast('儲存失敗：' + e.message, true);
+  }
+}
+
+function loadProfileToForm() {
+  const p = db.profile; if(!p) return;
+  const map = {catName:'name',catBirthday:'birthday',catGender:'gender',catBreed:'breed',catColor:'color',catChip:'chip',catNeuter:'neuter',catMemo:'memo',catVetClinic:'vetClinic'};
+  for(const [elId, key] of Object.entries(map)) {
+    const el = document.getElementById(elId);
+    if(el && p[key]) el.value = p[key];
+  }
+  updatePhotoUI();
+  updateProfileStats();
+  updateHeader();
+}
+
+function updateHeader() {
+  const n = db.profile?.name;
+  if(n) document.getElementById('headerCatName').textContent = n + ' 的生活日誌';
+}
+
+function updateProfileStats() {
+  const bday = db.profile?.birthday;
+  if(bday) {
+    const days = Math.floor((new Date()-new Date(bday))/86400000);
+    document.getElementById('statAge').textContent = days.toLocaleString();
+    const y=Math.floor(days/365), m=Math.floor((days%365)/30);
+    document.getElementById('statAgeYear').textContent = `${y}歲${m}月`;
+  }
+  if(db.vet.length) {
+    const last = [...db.vet].sort((a,b)=>b.date.localeCompare(a.date))[0];
+    document.getElementById('statLastVet').textContent = Math.floor((new Date()-new Date(last.date))/86400000)+'天前';
+  }
+  if(db.bath.length) {
+    const last = [...db.bath].sort((a,b)=>b.date.localeCompare(a.date))[0];
+    document.getElementById('statLastBath').textContent = Math.floor((new Date()-new Date(last.date))/86400000)+'天前';
+  }
+  if(db.weight.length) {
+    const last = [...db.weight].sort((a,b)=>b.date.localeCompare(a.date))[0];
+    document.getElementById('statWeight').textContent = last.weight+' kg';
+  }
+  document.getElementById('statVetCount').textContent = db.vet.length;
+}
+
+// ══════════════════════════════════════════
+// VET
+// ══════════════════════════════════════════
+async function saveVet() {
+  const checks = getSelectedChips('vetCheckChips');
+  const extra = document.getElementById('vet_extra_check').value;
+  if(extra) checks.push(extra);
+  const rec = {
+    id: Date.now().toString(),
+    date: document.getElementById('vet_date').value,
+    cost: document.getElementById('vet_cost').value,
+    reason: document.getElementById('vet_reason').value,
+    diagnosis: document.getElementById('vet_diagnosis').value,
+    checks: checks.join('、'),
+    medicine: document.getElementById('vet_medicine').value,
+    followup: document.getElementById('vet_followup').value,
+    doctor: document.getElementById('vet_doctor').value,
+    note: document.getElementById('vet_note').value
+  };
+  if(!rec.date) return showToast('請填入日期', true);
+  setBtnLoading('vetSaveBtn', true);
+  try {
+    setSyncBadge('syncing', '● 儲存中');
+    await apiWrite('vet', rec);
+    db.vet.push(rec);
+    if(rec.followup) {
+      const remRec = { id:(Date.now()+1).toString(), title:'回診：'+(rec.reason||''), date:rec.followup, type:'🏥 回診', note:rec.doctor||'' };
+      await apiWrite('reminders', remRec);
+      db.reminders.push(remRec);
+    }
+    renderVet(); updateProfileStats(); closeModal('vetModal');
+    clearInputs(['vet_date','vet_cost','vet_reason','vet_diagnosis','vet_extra_check','vet_medicine','vet_followup','vet_doctor','vet_note']);
+    clearChips('vetCheckChips');
+    setSyncBadge('ok', '● 已連線');
+    showToast('✓ 看診紀錄已儲存');
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  setBtnLoading('vetSaveBtn', false);
+}
+
+function renderVet() {
+  const list = document.getElementById('vetList');
+  if(!db.vet.length) { list.innerHTML='<div class="empty-state"><div class="icon">🏥</div><p>尚未新增看診紀錄</p></div>'; return; }
+  const sorted = [...db.vet].sort((a,b)=>b.date.localeCompare(a.date));
+  list.innerHTML = sorted.map(r=>`
+    <div class="record-item">
+      <div class="record-date">${r.date}</div>
+      <div class="record-content">
+        <div class="record-title">${r.reason||'一般看診'}${r.doctor?'<span class="badge badge-blue" style="margin-left:6px">'+r.doctor+'</span>':''}</div>
+        <div class="record-detail">
+          ${r.diagnosis?'診斷：'+r.diagnosis+'<br>':''}
+          ${r.checks?r.checks.split('、').map(c=>`<span class="badge badge-blue">${c}</span>`).join(' ')+'<br>':''}
+          ${r.medicine?'用藥：'+r.medicine+'<br>':''}
+          ${r.followup?'回診：'+r.followup:''}
+          ${r.note?'<br>'+r.note:''}
+        </div>
+        ${r.cost?`<div class="record-cost">NT$ ${Number(r.cost).toLocaleString()}</div>`:''}
+      </div>
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('vet','${r.id}')">✕</button></div>`:''}
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════
+// HEALTH
+// ══════════════════════════════════════════
+const HEALTH_FIELDS = [
+  {key:'weight',label:'體重(kg)'},
+  {key:'glu',label:'GLU'},{key:'bun',label:'BUN'},{key:'cre',label:'CRE'},
+  {key:'tcho',label:'TCHO'},{key:'tg',label:'TG'},{key:'tbil',label:'TBIL'},
+  {key:'ca',label:'Ca'},{key:'ip',label:'IP'},{key:'tp',label:'TP'},{key:'alb',label:'ALB'},
+  {key:'got',label:'GOT'},{key:'gpt',label:'GPT'},{key:'cpk',label:'CPK'},
+  {key:'ggt',label:'GGT'},{key:'alp1',label:'ALP≥1y'},{key:'mg',label:'MG'},
+  {key:'na',label:'Na'},{key:'k',label:'K'},{key:'cl',label:'Cl'},
+  {key:'tco2',label:'TCO2'},{key:'lipase',label:'Lipase'},
+  {key:'wbc',label:'WBC'},{key:'rbc',label:'RBC'},{key:'hgb',label:'HGB'},
+  {key:'hct',label:'HCT'},{key:'plt',label:'PLT'},{key:'lym',label:'LYM'},
+  {key:'gra',label:'GRA'},{key:'eos',label:'EOS'},
+  {key:'t4',label:'T4'},{key:'bile',label:'BILE ACID'}
+];
+
+let currentHealthField = 'weight';
+let healthChartInst = null;
+
+function renderHealthChartBtns() {
+  const btns = document.getElementById('chartBtns');
+  const fields = HEALTH_FIELDS.filter(f => db.health.some(r => r[f.key]));
+  if(!fields.length) { btns.innerHTML='<span style="color:var(--soft);font-size:.8rem">新增健檢資料後可查看趨勢</span>'; return; }
+  btns.innerHTML = fields.map(f=>`<button class="btn btn-sm btn-secondary" onclick="renderHealthChart('${f.key}')">${f.label}</button>`).join('');
+}
+
+function renderHealthChart(field) {
+  currentHealthField = field;
+  const sorted = [...db.health].filter(r=>r[field]).sort((a,b)=>a.date.localeCompare(b.date));
+  const ctx = document.getElementById('healthChart').getContext('2d');
+  if(healthChartInst) healthChartInst.destroy();
+  if(!sorted.length) return;
+  const label = HEALTH_FIELDS.find(f=>f.key===field)?.label || field;
+  healthChartInst = new Chart(ctx, {
+    type:'line',
+    data:{ labels:sorted.map(r=>r.date), datasets:[{ label, data:sorted.map(r=>parseFloat(r[field])), borderColor:'#b5541a', backgroundColor:'rgba(181,84,26,.1)', pointBackgroundColor:'#b5541a', pointRadius:5, tension:.35, fill:true }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:'#5a3e2b', font:{family:'Noto Serif TC'} } } },
+      scales:{ x:{ ticks:{color:'#9b7560'}, grid:{color:'rgba(200,149,108,.15)'} }, y:{ ticks:{color:'#9b7560'}, grid:{color:'rgba(200,149,108,.15)'} } }
+    }
+  });
+}
+
+function renderHealthTable() {
+  const wrap = document.getElementById('healthTable');
+  if(!db.health.length) { wrap.innerHTML='<p class="no-data" style="padding:16px;color:var(--soft)">尚未有健檢資料</p>'; return; }
+  const sorted = [...db.health].sort((a,b)=>b.date.localeCompare(a.date));
+  const shown = HEALTH_FIELDS.filter(f=>sorted.some(r=>r[f.key]));
+  wrap.innerHTML = `<table><thead><tr><th>指標</th>${sorted.map(r=>`<th>${r.date}</th>`).join('')}</tr></thead><tbody>
+    ${shown.map(f=>`<tr><td><strong>${f.label}</strong></td>${sorted.map(r=>{
+      const v=r[f.key]; if(!v) return '<td>—</td>';
+      return `<td>${v}</td>`;
+    }).join('')}</tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function saveHealth() {
+  const fields = ['glu','bun','cre','nh3','tcho','tg','tbil','ca','ip','tp','alb','glob','got','gpt','cpk','ldh','amyl','ggt','alp1','alp2','mg','na','k','cl','tco2','lipase','bun_crea','alb_glob','wbc','rbc','hgb','hct','mcv','mch','mchc','rdw','plt','mpv','pct','pdw','lym','mono','gra','eos','t4','tsh','cortisol','bile','fructosamine','cpl','fpl','vsaa'];
+  const rec = { id: Date.now().toString(), date: document.getElementById('h_date').value, cost: document.getElementById('h_cost').value, weight: document.getElementById('h_weight').value, note: document.getElementById('h_note').value };
+  fields.forEach(f => { const el=document.getElementById('h_'+f); if(el) rec[f]=el.value; });
+  if(!rec.date) return showToast('請填入日期', true);
+  setBtnLoading('healthSaveBtn', true);
+  try {
+    setSyncBadge('syncing','● 儲存中');
+    await apiWrite('health', rec);
+    db.health.push(rec);
+    renderHealth(); renderHealthChartBtns(); renderHealthChart(currentHealthField); renderHealthTable();
+    closeModal('healthModal');
+    document.querySelectorAll('#healthModal input').forEach(el=>el.value='');
+    setSyncBadge('ok','● 已連線'); showToast('✓ 健檢紀錄已儲存');
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  setBtnLoading('healthSaveBtn', false);
+}
+
+function renderHealth() {
+  const list = document.getElementById('healthList');
+  if(!db.health.length) { list.innerHTML='<div class="empty-state"><div class="icon">📊</div><p>尚未新增健檢紀錄</p></div>'; return; }
+  const sorted = [...db.health].sort((a,b)=>b.date.localeCompare(a.date));
+  list.innerHTML = sorted.map(r=>{
+    const badges = HEALTH_FIELDS.filter(f=>f.key!=='weight'&&r[f.key]).map(f=>`<span class="badge badge-green">${f.label}: ${r[f.key]}</span>`).join(' ');
+    return `<div class="record-item">
+      <div class="record-date">${r.date}</div>
+      <div class="record-content">
+        <div class="record-title">健康檢查${r.weight?'　<span style="font-family:DM Mono;font-size:.9rem">'+r.weight+' kg</span>':''}</div>
+        <div class="record-detail">${badges}${r.note?'<br>'+r.note:''}</div>
+        ${r.cost?`<div class="record-cost">NT$ ${Number(r.cost).toLocaleString()}</div>`:''}
+      </div>
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('health','${r.id}')">✕</button></div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+// BATH
+// ══════════════════════════════════════════
+async function saveBath() {
+  const services = getSelectedChips('bathServiceChips');
+  const rec = { id:Date.now().toString(), date:document.getElementById('bath_date').value, cost:document.getElementById('bath_cost').value, place:document.getElementById('bath_place').value, services:services.join('、'), note:document.getElementById('bath_note').value };
+  if(!rec.date) return showToast('請填入日期', true);
+  setBtnLoading('bathSaveBtn', true);
+  try {
+    setSyncBadge('syncing','● 儲存中');
+    await apiWrite('bath', rec);
+    db.bath.push(rec);
+    renderBath(); updateProfileStats(); closeModal('bathModal');
+    clearInputs(['bath_date','bath_cost','bath_note']); clearChips('bathServiceChips');
+    setSyncBadge('ok','● 已連線'); showToast('✓ 洗澡紀錄已儲存');
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  setBtnLoading('bathSaveBtn', false);
+}
+
+function renderBath() {
+  const list = document.getElementById('bathList');
+  if(!db.bath.length) { list.innerHTML='<div class="empty-state"><div class="icon">🛁</div><p>尚未新增洗澡紀錄</p></div>'; return; }
+  const sorted = [...db.bath].sort((a,b)=>b.date.localeCompare(a.date));
+  list.innerHTML = sorted.map(r=>`
+    <div class="record-item">
+      <div class="record-date">${r.date}</div>
+      <div class="record-content">
+        <div class="record-title">${r.place}</div>
+        <div class="record-detail">${r.services?r.services.split('、').map(s=>`<span class="badge badge-pink">${s}</span>`).join(' '):''}${r.note?'<br>'+r.note:''}</div>
+        ${r.cost?`<div class="record-cost">NT$ ${Number(r.cost).toLocaleString()}</div>`:''}
+      </div>
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('bath','${r.id}')">✕</button></div>`:''}
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════
+// WEIGHT
+// ══════════════════════════════════════════
+async function saveWeight() {
+  const rec = { id:Date.now().toString(), date:document.getElementById('w_date').value, weight:document.getElementById('w_weight').value, note:document.getElementById('w_note').value };
+  if(!rec.date||!rec.weight) return showToast('請填入日期與體重', true);
+  setBtnLoading('weightSaveBtn', true);
+  try {
+    setSyncBadge('syncing','● 儲存中');
+    await apiWrite('weight', rec);
+    db.weight.push(rec);
+    renderWeightList(); renderWeightChart(); updateProfileStats(); closeModal('weightModal');
+    clearInputs(['w_date','w_weight','w_note']);
+    setSyncBadge('ok','● 已連線'); showToast('✓ 體重已記錄');
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  setBtnLoading('weightSaveBtn', false);
+}
+
+let weightChartInst = null;
+function renderWeightChart() {
+  const sorted = [...db.weight].sort((a,b)=>a.date.localeCompare(b.date));
+  const ctx = document.getElementById('weightChart').getContext('2d');
+  if(weightChartInst) weightChartInst.destroy();
+  if(!sorted.length) return;
+  weightChartInst = new Chart(ctx, {
+    type:'line',
+    data:{ labels:sorted.map(r=>r.date), datasets:[{ label:'體重 (kg)', data:sorted.map(r=>parseFloat(r.weight)), borderColor:'#6b8f6e', backgroundColor:'rgba(107,143,110,.1)', pointBackgroundColor:'#6b8f6e', pointRadius:5, tension:.35, fill:true }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:'#5a3e2b', font:{family:'Noto Serif TC'} } } },
+      scales:{ x:{ ticks:{color:'#9b7560'}, grid:{color:'rgba(200,149,108,.15)'} }, y:{ ticks:{color:'#9b7560'}, grid:{color:'rgba(200,149,108,.15)'} } }
+    }
+  });
+}
+
+function renderWeightList() {
+  const list = document.getElementById('weightList');
+  if(!db.weight.length) { list.innerHTML='<div class="empty-state"><div class="icon">⚖️</div><p>尚未記錄體重</p></div>'; return; }
+  const sorted = [...db.weight].sort((a,b)=>b.date.localeCompare(a.date));
+  list.innerHTML = sorted.map((r,i)=>{
+    const prev = sorted[i+1];
+    let trend = '';
+    if(prev) { const d=(parseFloat(r.weight)-parseFloat(prev.weight)).toFixed(2); trend = d>0?`<span class="trend-up"> ▲+${d}</span>`:d<0?`<span class="trend-down"> ▼${d}</span>`:`<span class="trend-same"> ─</span>`; }
+    return `<div class="record-item">
+      <div class="record-date">${r.date}</div>
+      <div class="record-content">
+        <div class="record-title" style="font-family:'DM Mono',monospace;font-size:1.1rem">${r.weight} kg${trend}</div>
+        ${r.note?`<div class="record-detail">${r.note}</div>`:''}
+      </div>
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('weight','${r.id}')">✕</button></div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+// DIET
+// ══════════════════════════════════════════
+async function saveDiet() {
+  const rec = { id:Date.now().toString(), date:document.getElementById('diet_date').value, water:document.getElementById('diet_water').value, am:document.getElementById('diet_am').value, noon:document.getElementById('diet_noon').value, pm:document.getElementById('diet_pm').value, snack:document.getElementById('diet_snack').value, appetite:document.getElementById('diet_appetite').value, note:document.getElementById('diet_note').value };
+  if(!rec.date) return showToast('請填入日期', true);
+  setBtnLoading('dietSaveBtn', true);
+  try {
+    setSyncBadge('syncing','● 儲存中');
+    await apiWrite('diet', rec);
+    db.diet.push(rec); renderDiet(); closeModal('dietModal');
+    clearInputs(['diet_date','diet_water','diet_am','diet_noon','diet_pm','diet_snack','diet_note']);
+    setSyncBadge('ok','● 已連線'); showToast('✓ 飲食日誌已儲存');
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  setBtnLoading('dietSaveBtn', false);
+}
+
+function renderDiet() {
+  const list = document.getElementById('dietList');
+  if(!db.diet.length) { list.innerHTML='<div class="empty-state"><div class="icon">🍽️</div><p>尚未新增飲食紀錄</p></div>'; return; }
+  const sorted = [...db.diet].sort((a,b)=>b.date.localeCompare(a.date));
+  list.innerHTML = sorted.map(r=>{
+    const meals=[r.am&&'早：'+r.am,r.noon&&'午：'+r.noon,r.pm&&'晚：'+r.pm,r.snack&&'點心：'+r.snack].filter(Boolean);
+    return `<div class="record-item">
+      <div class="record-date">${r.date}</div>
+      <div class="record-content">
+        <div class="record-title">${r.appetite}${r.water?'　💧'+r.water+'ml':''}</div>
+        <div class="record-detail">${meals.join('　')}${r.note?'<br>'+r.note:''}</div>
+      </div>
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('diet','${r.id}')">✕</button></div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+// VACCINE
+// ══════════════════════════════════════════
+async function saveVaccine() {
+  const rec = { id:Date.now().toString(), date:document.getElementById('vac_date').value, cost:document.getElementById('vac_cost').value, type:document.getElementById('vac_type').value, brand:document.getElementById('vac_brand').value, next:document.getElementById('vac_next').value, note:document.getElementById('vac_note').value };
+  if(!rec.date) return showToast('請填入日期', true);
+  setBtnLoading('vaccineSaveBtn', true);
+  try {
+    setSyncBadge('syncing','● 儲存中');
+    await apiWrite('vaccine', rec);
+    db.vaccine.push(rec);
+    if(rec.next) {
+      const remRec = { id:(Date.now()+1).toString(), title:rec.type+'到期', date:rec.next, type:'💉 疫苗', note:rec.brand||'' };
+      await apiWrite('reminders', remRec);
+      db.reminders.push(remRec);
+    }
+    renderVaccine(); closeModal('vaccineModal');
+    clearInputs(['vac_date','vac_cost','vac_brand','vac_next','vac_note']);
+    setSyncBadge('ok','● 已連線'); showToast('✓ 疫苗紀錄已儲存');
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  setBtnLoading('vaccineSaveBtn', false);
+}
+
+function renderVaccine() {
+  const list = document.getElementById('vaccineList');
+  if(!db.vaccine.length) { list.innerHTML='<div class="empty-state"><div class="icon">💉</div><p>尚未新增疫苗 / 驅蟲紀錄</p></div>'; return; }
+  const sorted = [...db.vaccine].sort((a,b)=>b.date.localeCompare(a.date));
+  list.innerHTML = sorted.map(r=>`
+    <div class="record-item">
+      <div class="record-date">${r.date}</div>
+      <div class="record-content">
+        <div class="record-title"><span class="badge badge-rust">${r.type}</span> ${r.brand||''}</div>
+        <div class="record-detail">${r.next?'下次：'+r.next:''}${r.note?'　'+r.note:''}</div>
+        ${r.cost?`<div class="record-cost">NT$ ${Number(r.cost).toLocaleString()}</div>`:''}
+      </div>
+      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-danger" onclick="deleteRec('vaccine','${r.id}')">✕</button></div>`:''}
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════
+// REMINDERS
+// ══════════════════════════════════════════
+async function saveReminder() {
+  const rec = { id:Date.now().toString(), title:document.getElementById('rem_title').value, date:document.getElementById('rem_date').value, type:document.getElementById('rem_type').value, note:document.getElementById('rem_note').value };
+  if(!rec.title||!rec.date) return showToast('請填入標題與日期', true);
+  setBtnLoading('reminderSaveBtn', true);
+  try {
+    setSyncBadge('syncing','● 儲存中');
+    await apiWrite('reminders', rec);
+    db.reminders.push(rec); renderReminders(); closeModal('reminderModal');
+    clearInputs(['rem_title','rem_date','rem_note']);
+    setSyncBadge('ok','● 已連線'); showToast('✓ 提醒已設定');
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  setBtnLoading('reminderSaveBtn', false);
+}
+
+function renderReminders() {
+  const list = document.getElementById('reminderList');
+  if(!db.reminders.length) { list.innerHTML='<div class="empty-state"><div class="icon">🔔</div><p>尚未設定提醒</p></div>'; return; }
+  const today = new Date(); today.setHours(0,0,0,0);
+  const sorted = [...db.reminders].sort((a,b)=>a.date.localeCompare(b.date));
+  list.innerHTML = sorted.map(r=>{
+    const rd = new Date(r.date); rd.setHours(0,0,0,0);
+    const diff = Math.round((rd-today)/86400000);
+    const cls = diff===0?'today':diff<0?'past':'upcoming';
+    const daysText = diff===0?'📣 今天！':diff<0?`已過 ${-diff} 天`:`${diff} 天後`;
+    return `<div class="reminder-item ${cls}">
+      <div class="reminder-icon">${r.type?.split(' ')[0]||'📌'}</div>
+      <div class="reminder-text"><strong>${r.title}</strong><div style="font-size:.75rem;color:var(--soft);margin-top:2px">${r.date}${r.note?'　'+r.note:''}</div></div>
+      <div class="reminder-days" style="color:${diff<0?'var(--rust)':diff===0?'var(--yellow)':'var(--green)'}">${daysText}</div>
+      ${isAdmin?`<button class="btn btn-sm btn-danger" onclick="deleteRec('reminders','${r.id}')">✕</button>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+// DELETE
+// ══════════════════════════════════════════
+async function deleteRec(sheet, id) {
+  if(!confirm('確定要刪除這筆紀錄？')) return;
+  try {
+    setSyncBadge('syncing','● 刪除中');
+    await apiDelete(sheet, id);
+    db[sheet] = db[sheet].filter(r=>r.id!==id);
+    const renders = { vet:renderVet, health:renderHealth, bath:renderBath, weight:renderWeightList, diet:renderDiet, vaccine:renderVaccine, reminders:renderReminders };
+    if(renders[sheet]) renders[sheet]();
+    if(sheet==='weight') renderWeightChart();
+    if(sheet==='health') { renderHealthChartBtns(); renderHealthChart(currentHealthField); renderHealthTable(); }
+    updateProfileStats();
+    setSyncBadge('ok','● 已連線'); showToast('✓ 已刪除');
+  } catch(e) { setSyncBadge('error','● 刪除失敗'); showToast('刪除失敗：'+e.message,true); }
+}
+
+// ══════════════════════════════════════════
+// INIT — load all data
+// ══════════════════════════════════════════
+async function init() {
+  document.getElementById('headerDate').textContent = new Date().toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
+
+  // Check if already unlocked this session
+  if(sessionStorage.getItem(ADMIN_KEY)) {
+    isAdmin = true;
+    document.getElementById('adminBtn').textContent = '🔒 登出管理';
+  }
+
+  try {
+    setSyncBadge('syncing','● 載入中');
+    const [profile, vet, health, bath, weight, diet, vaccine, reminders] = await Promise.all([
+      apiRead('profile'), apiRead('vet'), apiRead('health'), apiRead('bath'),
+      apiRead('weight'), apiRead('diet'), apiRead('vaccine'), apiRead('reminders')
+    ]);
+    db.profile = (profile && profile[0]) ? profile[0] : {};
+    db.vet = vet || [];
+    db.health = health || [];
+    db.bath = bath || [];
+    db.weight = weight || [];
+    db.diet = diet || [];
+    db.vaccine = vaccine || [];
+    db.reminders = reminders || [];
+
+    loadProfileToForm();
+    renderVet(); renderHealth(); renderBath(); renderWeightList();
+    renderDiet(); renderVaccine(); renderReminders();
+    renderHealthChartBtns();
+
+    setSyncBadge('ok','● 已連線');
+  } catch(e) {
+    setSyncBadge('error','● 連線失敗');
+    showToast('無法連接 Google 試算表，請確認網路', true);
+  }
+
+  // Hide loading screen
+  setTimeout(() => document.getElementById('loadingScreen').classList.add('hide'), 1600);
+}
+
+init();
+</script>
+</body>
+</html>
