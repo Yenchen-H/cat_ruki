@@ -293,6 +293,54 @@ td.ok{color:var(--green)}
     <div class="stat-chip"><div class="num" id="statWeight">—</div><div class="lbl">最新體重(kg)</div></div>
     <div class="stat-chip"><div class="num" id="statVetCount">—</div><div class="lbl">總看診次數</div></div>
   </div>
+
+  <!-- 花費加總卡片 -->
+  <div class="card">
+    <div class="card-title">💰 花費統計</div>
+    <div class="stats-row" style="margin-bottom:0">
+      <div class="stat-chip">
+        <div class="num" id="costTotal" style="color:var(--caramel)">—</div>
+        <div class="lbl">總花費 (NT$)</div>
+      </div>
+      <div class="stat-chip">
+        <div class="num" id="costVet" style="font-size:1.1rem">—</div>
+        <div class="lbl">🏥 看診費用</div>
+      </div>
+      <div class="stat-chip">
+        <div class="num" id="costHealth" style="font-size:1.1rem">—</div>
+        <div class="lbl">📊 健檢費用</div>
+      </div>
+      <div class="stat-chip">
+        <div class="num" id="costBath" style="font-size:1.1rem">—</div>
+        <div class="lbl">🛁 洗澡費用</div>
+      </div>
+      <div class="stat-chip">
+        <div class="num" id="costVaccine" style="font-size:1.1rem">—</div>
+        <div class="lbl">💉 疫苗費用</div>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--caramel-light);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div style="font-size:.78rem;color:var(--soft)">
+        本年度花費：<span id="costThisYear" style="font-family:'DM Mono',monospace;color:var(--rust);font-weight:600">—</span>
+        　本月花費：<span id="costThisMonth" style="font-family:'DM Mono',monospace;color:var(--rust);font-weight:600">—</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" onclick="exportBackup()">📥 匯出備份</button>
+        <button class="btn btn-secondary btn-sm" onclick="importBackup()">📤 匯入備份</button>
+        <input type="file" id="importInput" accept=".json" style="display:none" onchange="doImport(event)">
+      </div>
+    </div>
+  </div>
+
+  <!-- 快速搜尋 -->
+  <div class="card">
+    <div class="card-title">🔍 快速搜尋紀錄</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="searchInput" placeholder="搜尋看診原因、診斷、備藥、備註…" style="flex:1;min-width:200px" oninput="doSearch(this.value)">
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('searchInput').value='';doSearch('')">清除</button>
+    </div>
+    <div id="searchResults" style="margin-top:12px"></div>
+  </div>
 </div>
 
 <!-- VET -->
@@ -836,6 +884,10 @@ async function saveProfile() {
   };
   try {
     setSyncBadge('syncing', '● 儲存中');
+    // Save photo to localStorage as fallback (cross-device via Sheets may fail for large base64)
+    if(p.photo) {
+      try { localStorage.setItem('ruki_profile_photo', p.photo); } catch(e) {}
+    }
     await apiWriteProfile(p);
     db.profile = p;
     updateProfileStats();
@@ -854,6 +906,11 @@ function loadProfileToForm() {
   for(const [elId, key] of Object.entries(map)) {
     const el = document.getElementById(elId);
     if(el && p[key]) el.value = p[key];
+  }
+  // Restore photo: prefer from db.profile, fallback to localStorage (handles cross-device photo loss)
+  if(!db.profile.photo) {
+    const localPhoto = localStorage.getItem('ruki_profile_photo');
+    if(localPhoto) db.profile.photo = localPhoto;
   }
   updatePhotoUI();
   updateProfileStats();
@@ -886,6 +943,118 @@ function updateProfileStats() {
     document.getElementById('statWeight').textContent = last.weight+' kg';
   }
   document.getElementById('statVetCount').textContent = db.vet.length;
+  updateCostStats();
+}
+
+// ══════════════════════════════════════════
+// COST STATS
+// ══════════════════════════════════════════
+function sumCost(arr) { return arr.reduce((s,r)=>s+(parseFloat(r.cost)||0),0); }
+function fmtNT(n) { return n>0 ? 'NT$ '+n.toLocaleString() : '—'; }
+
+function updateCostStats() {
+  const vetC = sumCost(db.vet);
+  const healthC = sumCost(db.health);
+  const bathC = sumCost(db.bath);
+  const vaccineC = sumCost(db.vaccine);
+  const total = vetC + healthC + bathC + vaccineC;
+
+  document.getElementById('costTotal').textContent = total>0 ? 'NT$ '+total.toLocaleString() : '—';
+  document.getElementById('costVet').textContent = fmtNT(vetC);
+  document.getElementById('costHealth').textContent = fmtNT(healthC);
+  document.getElementById('costBath').textContent = fmtNT(bathC);
+  document.getElementById('costVaccine').textContent = fmtNT(vaccineC);
+
+  const now = new Date();
+  const thisYear = now.getFullYear().toString();
+  const thisMonth = now.toISOString().slice(0,7);
+  const allRecs = [...db.vet, ...db.health, ...db.bath, ...db.vaccine];
+  const yearC = sumCost(allRecs.filter(r=>r.date && r.date.startsWith(thisYear)));
+  const monthC = sumCost(allRecs.filter(r=>r.date && r.date.startsWith(thisMonth)));
+  document.getElementById('costThisYear').textContent = yearC>0 ? 'NT$ '+yearC.toLocaleString() : '—';
+  document.getElementById('costThisMonth').textContent = monthC>0 ? 'NT$ '+monthC.toLocaleString() : '—';
+}
+
+// ══════════════════════════════════════════
+// EXPORT / IMPORT BACKUP
+// ══════════════════════════════════════════
+function exportBackup() {
+  const backup = { exportedAt: new Date().toISOString(), version: '1.0', data: db };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date().toISOString().slice(0,10);
+  a.download = `Ruki日誌備份_${d}.json`;
+  a.click();
+  showToast('✓ 備份檔案已下載');
+}
+
+function importBackup() {
+  if(!isAdmin) { requireAdmin(importBackup); return; }
+  document.getElementById('importInput').click();
+}
+
+async function doImport(e) {
+  const file = e.target.files[0]; if(!file) return;
+  try {
+    const text = await file.text();
+    const backup = JSON.parse(text);
+    const d = backup.data || backup;
+    if(!confirm(`確定要從備份檔還原資料？\n匯出時間：${backup.exportedAt||'未知'}\n\n⚠️ 這會覆蓋目前在 Google 試算表的資料！`)) return;
+    showToast('備份僅供本地查閱，如需還原請聯絡管理員', true);
+    // Local preview mode
+    if(d.vet) db.vet = d.vet;
+    if(d.health) db.health = d.health;
+    if(d.bath) db.bath = d.bath;
+    if(d.weight) db.weight = d.weight;
+    if(d.diet) db.diet = d.diet;
+    if(d.vaccine) db.vaccine = d.vaccine;
+    if(d.reminders) db.reminders = d.reminders;
+    if(d.profile) { db.profile = d.profile; loadProfileToForm(); }
+    renderVet(); renderHealth(); renderBath(); renderWeightList();
+    renderDiet(); renderVaccine(); renderReminders();
+    updateProfileStats();
+    showToast('✓ 備份資料已載入（僅本地預覽）');
+  } catch(err) {
+    showToast('備份檔格式錯誤：'+err.message, true);
+  }
+  e.target.value = '';
+}
+
+// ══════════════════════════════════════════
+// QUICK SEARCH
+// ══════════════════════════════════════════
+function doSearch(q) {
+  const box = document.getElementById('searchResults');
+  if(!q.trim()) { box.innerHTML=''; return; }
+  const kw = q.toLowerCase();
+  const results = [];
+  db.vet.forEach(r=>{
+    const txt = [r.reason,r.diagnosis,r.medicine,r.note,r.doctor,r.checks].filter(Boolean).join(' ').toLowerCase();
+    if(txt.includes(kw)) results.push({type:'🏥 看診',date:r.date,title:r.reason||'一般看診',detail:(r.diagnosis||'')+(r.medicine?' | 用藥：'+r.medicine:'')});
+  });
+  db.bath.forEach(r=>{
+    const txt = [r.place,r.note].filter(Boolean).join(' ').toLowerCase();
+    if(txt.includes(kw)) results.push({type:'🛁 洗澡',date:r.date,title:r.place||'洗澡',detail:r.note||''});
+  });
+  db.vaccine.forEach(r=>{
+    const txt = [r.type,r.brand,r.note].filter(Boolean).join(' ').toLowerCase();
+    if(txt.includes(kw)) results.push({type:'💉 疫苗',date:r.date,title:r.type||'疫苗',detail:r.brand||''});
+  });
+  db.reminders.forEach(r=>{
+    const txt = [r.title,r.note].filter(Boolean).join(' ').toLowerCase();
+    if(txt.includes(kw)) results.push({type:'🔔 提醒',date:r.date,title:r.title,detail:r.note||''});
+  });
+  results.sort((a,b)=>b.date.localeCompare(a.date));
+  if(!results.length) { box.innerHTML='<div style="color:var(--soft);font-size:.83rem;padding:8px 0">找不到符合的紀錄</div>'; return; }
+  box.innerHTML = results.map(r=>`
+    <div class="record-item" style="margin-bottom:8px">
+      <div class="record-date">${r.date}</div>
+      <div class="record-content">
+        <div class="record-title"><span class="badge badge-rust">${r.type}</span> ${r.title}</div>
+        ${r.detail?`<div class="record-detail">${r.detail}</div>`:''}
+      </div>
+    </div>`).join('');
 }
 
 // ══════════════════════════════════════════
