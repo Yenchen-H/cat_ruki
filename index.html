@@ -403,6 +403,41 @@ th{background:rgba(255,255,255,.07); color:var(--text-main)}
 }
 
 
+html, body {
+  height: 100%;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+body.modal-open {
+  overflow: hidden;
+}
+.modal-overlay {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  align-items: flex-start;
+}
+.modal {
+  margin: 20px auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+@media(max-width: 760px){
+  .modal-overlay{padding:10px}
+  .modal{
+    max-height: calc(100dvh - 20px);
+    min-height: auto;
+    padding:20px 16px 28px;
+    border-radius:18px;
+  }
+  .index-grid{grid-template-columns:1fr !important}
+  .form-row,.form-row-3,.profile-fields{grid-template-columns:1fr !important}
+  input[type=text],input[type=date],input[type=number],input[type=password],textarea,select{
+    font-size:16px;
+  }
+}
+
+
 
 /* Contrast tuning */
 .record-title,.modal-title,.card-title,.lock-title,strong,b{color:var(--text-main)}
@@ -458,8 +493,8 @@ select option{color:#111827;background:#f8fafc}
   <button onclick="switchTab('weight')">⚖️ 體重追蹤</button>
   <button onclick="switchTab('diet')">🍽️ 飲食日誌</button>
   <button onclick="switchTab('vaccine')">💉 疫苗驅蟲</button>
-  <button onclick="switchTab('reminder')">🔔 提醒事項</button>
   <button onclick="switchTab('supplies')">🛍️ 用品支出</button>
+  <button onclick="switchTab('reminder')">🔔 提醒事項</button>
 </nav>
 
 <main>
@@ -1008,6 +1043,64 @@ let isAdmin = false;
 let db = { profile:{}, vet:[], health:[], bath:[], weight:[], diet:[], vaccine:[], reminders:[], supplies:[] };
 let editState = { sheet:null, id:null };
 
+
+function parseFlexibleInput(value) {
+  if (value == null) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+  if (raw === '-') return '-';
+  const normalized = raw.replace(/,/g, '');
+  if (/^-?\d+(\.\d+)?$/.test(normalized)) return normalized;
+  return raw;
+}
+
+function setFlexibleFieldValue(el, value) {
+  if (!el) return;
+  el.type = 'text';
+  el.inputMode = 'decimal';
+  el.value = value ?? '';
+}
+
+function getFlexibleFieldValue(id) {
+  const el = document.getElementById(id);
+  return parseFlexibleInput(el ? el.value : '');
+}
+
+function enableFlexibleHealthInputs() {
+  document.querySelectorAll('#healthModal input[type="number"]').forEach(el => {
+    el.type = 'text';
+    el.inputMode = 'decimal';
+    el.setAttribute('autocomplete', 'off');
+    el.addEventListener('blur', () => {
+      el.value = parseFlexibleInput(el.value);
+    });
+  });
+}
+
+function saveHealthDraft() {
+  const draft = {};
+  document.querySelectorAll('#healthModal input, #healthModal textarea, #healthModal select').forEach(el => {
+    draft[el.id] = el.value;
+  });
+  sessionStorage.setItem('ruki_health_draft', JSON.stringify(draft));
+}
+
+function restoreHealthDraft() {
+  try {
+    const raw = sessionStorage.getItem('ruki_health_draft');
+    if (!raw) return;
+    const draft = JSON.parse(raw);
+    Object.entries(draft).forEach(([id, value]) => {
+      const el = document.getElementById(id);
+      if (el && !el.value) el.value = value;
+    });
+  } catch (e) {}
+}
+
+function clearHealthDraft() {
+  sessionStorage.removeItem('ruki_health_draft');
+}
+
 function normalizeDateString(value) {
   if (!value) return '';
   if (typeof value === 'string') {
@@ -1168,7 +1261,7 @@ async function syncAllFromCloud(showStatus = false) {
 // API
 // ══════════════════════════════════════════
 async function apiRead(sheet) {
-  const r = await fetch(`${API_URL}?sheet=${sheet}`);
+  const r = await fetch(`${API_URL}?sheet=${sheet}&_=${Date.now()}`, { cache:'no-store' });
   const j = await r.json();
   return j.ok ? j.data : [];
 }
@@ -1300,7 +1393,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
-  const tabs = ['profile','vet','health','bath','weight','diet','vaccine','reminder','supplies'];
+  const tabs = ['profile','vet','health','bath','weight','diet','vaccine','supplies','reminder'];
   document.querySelectorAll('nav button')[tabs.indexOf(name)].classList.add('active');
   if (name === 'vet') renderVet();
   if (name === 'weight') renderWeightChart();
@@ -1311,12 +1404,15 @@ function switchTab(name) {
 
 function openModal(id) {
   document.getElementById(id).classList.add('open');
+  document.body.classList.add('modal-open');
   const today = new Date().toISOString().split('T')[0];
   const d = document.querySelector(`#${id} input[type=date]`);
   if (d && !d.value) d.value = today;
+  if (id === 'healthModal') restoreHealthDraft();
 }
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
+  if (!document.querySelector('.modal-overlay.open')) document.body.classList.remove('modal-open');
   const defaults = {
     vetModal:['🏥 新增看診紀錄','vetSaveBtn'],
     healthModal:['📊 新增健康檢查','healthSaveBtn'],
@@ -1329,7 +1425,7 @@ function closeModal(id) {
   };
   if (defaults[id]) resetEditState(id, defaults[id][0], defaults[id][1]);
 }
-document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if(e.target===o) o.classList.remove('open'); }));
+document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if(e.target===o) { o.classList.remove('open'); if (!document.querySelector('.modal-overlay.open')) document.body.classList.remove('modal-open'); } }));
 
 const vetListEl = document.getElementById('vetList');
 if (vetListEl) {
@@ -1700,21 +1796,24 @@ let healthChartInst = null;
 
 function renderHealthChartBtns() {
   const btns = document.getElementById('chartBtns');
-  const fields = HEALTH_FIELDS.filter(f => db.health.some(r => r[f.key]));
+  const fields = HEALTH_FIELDS.filter(f => db.health.some(r => r[f.key] !== '' && r[f.key] != null));
   if(!fields.length) { btns.innerHTML='<span style="color:var(--soft);font-size:.8rem">新增健檢資料後可查看趨勢</span>'; return; }
   btns.innerHTML = fields.map(f=>`<button class="btn btn-sm btn-secondary" onclick="renderHealthChart('${f.key}')">${f.label}</button>`).join('');
 }
 
 function renderHealthChart(field) {
   currentHealthField = field;
-  const sorted = [...db.health].filter(r=>r[field]).sort((a,b)=>a.date.localeCompare(b.date));
+  const sorted = [...db.health]
+    .map(r => ({ ...r, __num: parseFloat(r[field]) }))
+    .filter(r => Number.isFinite(r.__num))
+    .sort((a,b)=>a.date.localeCompare(b.date));
   const ctx = document.getElementById('healthChart').getContext('2d');
   if(healthChartInst) healthChartInst.destroy();
   if(!sorted.length) return;
   const label = HEALTH_FIELDS.find(f=>f.key===field)?.label || field;
   healthChartInst = new Chart(ctx, {
     type:'line',
-    data:{ labels:sorted.map(r=>r.date), datasets:[{ label, data:sorted.map(r=>parseFloat(r[field])), borderColor:'#b5541a', backgroundColor:'rgba(181,84,26,.1)', pointBackgroundColor:'#b5541a', pointRadius:5, tension:.35, fill:true }] },
+    data:{ labels:sorted.map(r=>r.date), datasets:[{ label, data:sorted.map(r=>r.__num), borderColor:'#b5541a', backgroundColor:'rgba(181,84,26,.1)', pointBackgroundColor:'#b5541a', pointRadius:5, tension:.35, fill:true }] },
     options:{ responsive:true, maintainAspectRatio:false,
       plugins:{ legend:{ labels:{ color:'#5a3e2b', font:{family:'Noto Serif TC'} } } },
       scales:{ x:{ ticks:{color:'#9b7560'}, grid:{color:'rgba(200,149,108,.15)'} }, y:{ ticks:{color:'#9b7560'}, grid:{color:'rgba(200,149,108,.15)'} } }
@@ -1726,10 +1825,10 @@ function renderHealthTable() {
   const wrap = document.getElementById('healthTable');
   if(!db.health.length) { wrap.innerHTML='<p class="no-data" style="padding:16px;color:var(--soft)">尚未有健檢資料</p>'; return; }
   const sorted = [...db.health].sort((a,b)=>b.date.localeCompare(a.date));
-  const shown = HEALTH_FIELDS.filter(f=>sorted.some(r=>r[f.key]));
+  const shown = HEALTH_FIELDS.filter(f=>sorted.some(r=>r[f.key] !== '' && r[f.key] != null));
   wrap.innerHTML = `<table><thead><tr><th>指標</th>${sorted.map(r=>`<th>${formatDisplayDate(r.date)}</th>`).join('')}</tr></thead><tbody>
     ${shown.map(f=>`<tr><td><strong>${f.label}</strong></td>${sorted.map(r=>{
-      const v=r[f.key]; if(!v) return '<td>—</td>';
+      const v=r[f.key]; if(v === '' || v == null) return '<td>—</td>';
       return `<td>${v}</td>`;
     }).join('')}</tr>`).join('')}
   </tbody></table>`;
@@ -1738,8 +1837,14 @@ function renderHealthTable() {
 async function saveHealth() {
   const wasEditing = editState.sheet !== null;
   const fields = ['glu','bun','cre','nh3','tcho','tg','tbil','ca','ip','tp','alb','glob','got','gpt','cpk','ldh','amyl','ggt','alp1','alp2','mg','na','k','cl','tco2','lipase','bun_crea','alb_glob','wbc','rbc','hgb','hct','mcv','mch','mchc','rdw','plt','mpv','pct','pdw','lym','mono','gra','eos','t4','tsh','cortisol','bile','fructosamine','cpl','fpl','vsaa'];
-  const rec = { id: Date.now().toString(), date: document.getElementById('h_date').value, cost: document.getElementById('h_cost').value, weight: document.getElementById('h_weight').value, note: document.getElementById('h_note').value };
-  fields.forEach(f => { const el=document.getElementById('h_'+f); if(el) rec[f]=el.value; });
+  const rec = {
+    id: Date.now().toString(),
+    date: document.getElementById('h_date').value,
+    cost: getFlexibleFieldValue('h_cost'),
+    weight: getFlexibleFieldValue('h_weight'),
+    note: document.getElementById('h_note').value
+  };
+  fields.forEach(f => { rec[f] = getFlexibleFieldValue('h_'+f); });
   if(!rec.date) return showToast('請填入日期', true);
   setBtnLoading('healthSaveBtn', true);
   try {
@@ -1750,11 +1855,11 @@ async function saveHealth() {
       rec.id = editState.id;
     }
     await apiWrite('health', rec);
-    db.health.push(rec);
+    await syncAllFromCloud(false);
+    clearHealthDraft();
     renderHealth(); renderHealthChartBtns(); renderHealthChart(currentHealthField); renderHealthTable();
     closeModal('healthModal');
-    document.querySelectorAll('#healthModal input').forEach(el=>el.value='');
-    document.getElementById('h_note').value='';
+    document.querySelectorAll('#healthModal input, #healthModal textarea').forEach(el=>el.value='');
     resetEditState('healthModal', '📊 新增健康檢查', 'healthSaveBtn');
     setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 健檢紀錄已更新' : '✓ 健檢紀錄已儲存');
   } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
@@ -1766,7 +1871,7 @@ function renderHealth() {
   if(!db.health.length) { list.innerHTML='<div class="empty-state"><div class="icon">📊</div><p>尚未新增健檢紀錄</p></div>'; return; }
   const sorted = [...db.health].sort((a,b)=>b.date.localeCompare(a.date));
   list.innerHTML = sorted.map(r=>{
-    const badges = HEALTH_FIELDS.filter(f=>f.key!=='weight'&&r[f.key]).map(f=>`<span class="badge badge-green">${f.label}: ${r[f.key]}</span>`).join(' ');
+    const badges = HEALTH_FIELDS.filter(f=>f.key!=='weight' && r[f.key] !== '' && r[f.key] != null).map(f=>`<span class="badge badge-green">${f.label}: ${r[f.key]}</span>`).join(' ');
     return `<div class="record-item">
       <div class="record-date">${formatDisplayDate(r.date)}</div>
       <div class="record-content">
@@ -2043,12 +2148,12 @@ function editVet(id) { startEdit('vet', id, fillVetForm, 'vetModal', '🏥 編�
 
 function fillHealthForm(r) {
   document.getElementById('h_date').value = normalizeDateString(r.date);
-  document.getElementById('h_cost').value = r.cost || '';
-  document.getElementById('h_weight').value = r.weight || '';
+  setFlexibleFieldValue(document.getElementById('h_cost'), r.cost || '');
+  setFlexibleFieldValue(document.getElementById('h_weight'), r.weight || '');
   document.getElementById('h_note').value = r.note || '';
   ['glu','bun','cre','nh3','tcho','tg','tbil','ca','ip','tp','alb','glob','got','gpt','cpk','ldh','amyl','ggt','alp1','alp2','mg','na','k','cl','tco2','lipase','bun_crea','alb_glob','wbc','rbc','hgb','hct','mcv','mch','mchc','rdw','plt','mpv','pct','pdw','lym','mono','gra','eos','t4','tsh','cortisol','bile','fructosamine','cpl','fpl','vsaa'].forEach(f => {
     const el = document.getElementById('h_'+f);
-    if (el) el.value = r[f] || '';
+    if (el) setFlexibleFieldValue(el, r[f] || '');
   });
 }
 function editHealth(id) { startEdit('health', id, fillHealthForm, 'healthModal', '📊 編輯健康檢查'); }
@@ -2444,6 +2549,11 @@ document.getElementById('suppliesModal').addEventListener('click', ()=>{});
 window.addEventListener('DOMContentLoaded', ()=>{
   updateSupplyItems('食品');
   document.getElementById('sup_cat').addEventListener('change', e=>updateSupplyItems(e.target.value));
+  enableFlexibleHealthInputs();
+  document.querySelectorAll('#healthModal input, #healthModal textarea, #healthModal select').forEach(el => {
+    el.addEventListener('input', saveHealthDraft);
+    el.addEventListener('change', saveHealthDraft);
+  });
 });
 
 init();
