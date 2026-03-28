@@ -445,6 +445,20 @@ body.modal-open {
 .record-actions .btn,.section-header .btn,.btn-sm{font-weight:700}
 select option{color:#111827;background:#f8fafc}
 
+
+.health-abnormal-summary{margin-top:8px;padding:8px 10px;border-radius:10px;background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.22);font-size:.78rem;line-height:1.7}
+.health-abnormal-summary .abn-title{color:#ffb3b3;font-weight:700;margin-bottom:4px}
+.health-abnormal-summary .abn-item{color:#ffb3b3}
+.health-detail-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.health-detail-pill{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);font-size:.8rem}
+.health-detail-section{margin-bottom:18px}
+.health-detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.health-detail-item{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
+.health-detail-item .k{font-size:.72rem;color:var(--text-soft);margin-bottom:4px}
+.health-detail-item .v{font-family:'DM Mono',monospace;font-size:.95rem;color:var(--text-main)}
+.health-detail-item.abnormal{border-color:rgba(252,165,165,.35);background:rgba(192,57,43,.10)}
+.health-detail-item.abnormal .v{color:#ffb3b3}
+
 </style>
 </head>
 <body>
@@ -616,6 +630,17 @@ select option{color:#111827;background:#f8fafc}
     <div class="health-table-wrap" id="healthTable"></div>
   </div>
   <div id="healthList" class="record-list"><div class="empty-state"><div class="icon">📊</div><p>載入中…</p></div></div>
+</div>
+
+<!-- HEALTH DETAIL -->
+<div class="modal-overlay" id="healthDetailModal">
+  <div class="modal">
+    <div class="modal-title">📑 健檢明細</div>
+    <div id="healthDetailBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('healthDetailModal')">關閉</button>
+    </div>
+  </div>
 </div>
 
 <!-- BATH -->
@@ -1102,25 +1127,49 @@ function clearHealthDraft() {
 }
 
 function normalizeDateString(value) {
-  if (!value) return '';
+  if (value == null || value === '') return '';
+
+  const formatYMD = (y, m, d) => `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const fromLocalDate = (d) => formatYMD(d.getFullYear(), d.getMonth() + 1, d.getDate());
+
   if (typeof value === 'string') {
     const trimmed = value.trim();
-    const m = trimmed.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
-    if (m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
-    const d = new Date(trimmed);
-    if (!isNaN(d.getTime())) {
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if (!trimmed) return '';
+
+    const directYMD = trimmed.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
+    if (directYMD) return formatYMD(directYMD[1], directYMD[2], directYMD[3]);
+
+    const embeddedYMD = trimmed.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+    if (embeddedYMD) return formatYMD(embeddedYMD[1], embeddedYMD[2], embeddedYMD[3]);
+
+    const mdy = trimmed.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:\D.*)?$/);
+    if (mdy) return formatYMD(mdy[3], mdy[1], mdy[2]);
+
+    const named = trimmed.match(/^[A-Za-z]{3}\s+([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})/);
+    if (named) {
+      const monthMap = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+      const month = monthMap[named[1]];
+      if (month) return formatYMD(named[3], month, named[2]);
+    }
+
+    const namedLong = trimmed.match(/^[A-Za-z]{3,9}\s+([A-Za-z]{3,9})\s+(\d{1,2})\s+(\d{4})/);
+    if (namedLong) {
+      const monthMap = {Jan:1,January:1,Feb:2,February:2,Mar:3,March:3,Apr:4,April:4,May:5,Jun:6,June:6,Jul:7,July:7,Aug:8,August:8,Sep:9,Sept:9,September:9,Oct:10,October:10,Nov:11,November:11,Dec:12,December:12};
+      const month = monthMap[namedLong[1]];
+      if (month) return formatYMD(namedLong[3], month, namedLong[2]);
     }
   }
+
   if (typeof value === 'number') {
-    const excelEpoch = new Date(Math.round((value - 25569) * 86400 * 1000));
+    const excelUtcMs = Math.round((value - 25569) * 86400 * 1000);
+    const excelEpoch = new Date(excelUtcMs);
     if (!isNaN(excelEpoch.getTime())) {
-      return `${excelEpoch.getFullYear()}-${String(excelEpoch.getMonth()+1).padStart(2,'0')}-${String(excelEpoch.getDate()).padStart(2,'0')}`;
+      return formatYMD(excelEpoch.getUTCFullYear(), excelEpoch.getUTCMonth() + 1, excelEpoch.getUTCDate());
     }
   }
-  if (value instanceof Date && !isNaN(value.getTime())) {
-    return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`;
-  }
+
+  if (value instanceof Date && !isNaN(value.getTime())) return fromLocalDate(value);
+
   return '';
 }
 
@@ -1130,27 +1179,259 @@ function formatDisplayDate(value) {
   return s.replace(/-/g, '/');
 }
 
+function getLocalTodayString() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function parseLocalDateOnly(value) {
+  const s = normalizeDateString(value);
+  if (!s) return null;
+  const [y,m,d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function daysBetweenToday(value) {
+  const target = parseLocalDateOnly(value);
+  if (!target) return null;
+  const today = parseLocalDateOnly(getLocalTodayString());
+  return Math.floor((today - target) / 86400000);
+}
+
 function formatHeaderToday() {
   const d = new Date();
   const weekdays = ['週日','週一','週二','週三','週四','週五','週六'];
   return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${weekdays[d.getDay()]}`;
 }
 
+function dedupeSheetRecords(sheet) {
+  const arr = Array.isArray(db[sheet]) ? db[sheet] : [];
+  const map = new Map();
+  arr.forEach((r, idx) => {
+    const key = (r?.id ?? '') !== '' ? `id:${String(r.id)}` : `fallback:${sheet}:${normalizeDateString(r?.date)}:${idx}`;
+    map.set(key, {
+      ...r,
+      id: (r?.id ?? '') === '' ? `${Date.now()}${Math.floor(Math.random()*1000)}${idx}` : String(r.id),
+      sourceId: r?.sourceId == null ? r?.sourceId : String(r.sourceId)
+    });
+  });
+  db[sheet] = Array.from(map.values());
+}
+
+const HEALTH_LOCAL_CACHE_KEY = 'ruki_health_full_records';
+
+const HEALTH_FIELD_SECTIONS = [
+  { title:'基本資料', fields:[{key:'weight',label:'體重(kg)'},{key:'cost',label:'費用(元)'}] },
+  { title:'生化檢查', fields:[
+    {key:'glu',label:'GLU'},{key:'bun',label:'BUN'},{key:'cre',label:'CRE'},{key:'nh3',label:'NH3'},
+    {key:'tcho',label:'TCHO'},{key:'tg',label:'TG'},{key:'tbil',label:'TBIL'},{key:'ca',label:'Ca'},{key:'ip',label:'IP'},
+    {key:'tp',label:'TP'},{key:'alb',label:'ALB'},{key:'glob',label:'GLOB'},{key:'got',label:'GOT'},{key:'gpt',label:'GPT'},
+    {key:'cpk',label:'CPK'},{key:'ldh',label:'LDH'},{key:'amyl',label:'v-AMYL'},{key:'ggt',label:'GGT'},
+    {key:'alp1',label:'ALP ≥1歲'},{key:'alp2',label:'ALP <1歲'},{key:'mg',label:'MG'},{key:'na',label:'Na'},
+    {key:'k',label:'K'},{key:'cl',label:'Cl'},{key:'tco2',label:'TCO2'},{key:'lipase',label:'v-Lipase'},
+    {key:'bun_crea',label:'BUN/CREA'},{key:'alb_glob',label:'ALB/GLOB'}
+  ]},
+  { title:'血液檢查', fields:[
+    {key:'wbc',label:'WBC'},{key:'rbc',label:'RBC'},{key:'hgb',label:'HGB/HB'},{key:'hct',label:'HCT'},
+    {key:'mcv',label:'MCV'},{key:'mch',label:'MCH'},{key:'mchc',label:'MCHC'},{key:'rdw',label:'RDW'},
+    {key:'plt',label:'PLT'},{key:'mpv',label:'MPV'},{key:'pct',label:'PCT'},{key:'pdw',label:'PDW'},
+    {key:'lym',label:'LYM'},{key:'mono',label:'MONO'},{key:'gra',label:'GRA'},{key:'eos',label:'EOS'}
+  ]},
+  { title:'內分泌檢查', fields:[
+    {key:'t4',label:'T4'},{key:'tsh',label:'TSH'},{key:'cortisol',label:'CORTISOL'},{key:'bile',label:'BILE ACID'},
+    {key:'fructosamine',label:'fructosamine'},{key:'cpl',label:'CPL'},{key:'fpl',label:'FPL'},{key:'vsaa',label:'V-SAA'}
+  ]}
+];
+
+const HEALTH_LABEL_MAP = Object.fromEntries(
+  HEALTH_FIELD_SECTIONS.flatMap(section => section.fields.map(field => [field.key, field.label]))
+);
+
+
+const HEALTH_RANGES = {
+  glu:[71,148], bun:[17.6,32.8], cre:[0.8,1.8], nh3:[23,78], tcho:[89,176], tg:[17,104], tbil:[0.1,0.4],
+  ca:[8.8,11.9], ip:[2.6,6.0], tp:[5.7,7.8], alb:[2.3,3.5], got:[18,51], gpt:[22,84], cpk:[87,309],
+  ldh:[35,187], amyl:[200,1900], ggt:[1,10], alp1:[38,165], alp2:[77,358], mg:[1.8,2.7], na:[147,156],
+  k:[3.4,4.6], cl:[107,120], tco2:[20,30], lipase:[0,30], wbc:[5.5,19.5], rbc:[5.0,10.0], hgb:[8,15],
+  hct:[24,45], mcv:[39,55], mch:[13,17], mchc:[31,35], rdw:[17,22], plt:[200,800], mpv:[6.5,15.0],
+  lym:[1.5,7.0], mono:[0.0,0.9], gra:[2.5,14.3], eos:[0.0,1.5], t4:[0.9,3.7], tsh:[null,0.5],
+  cortisol:[1.0,6.0], bile:[null,5.0], pct:[0,null]
+};
+
+function isMeaningfulHealthValue(v) {
+  if (v == null) return false;
+  const s = String(v).trim();
+  if (!s) return false;
+  const normalized = s.replace(/\s+/g, '').toLowerCase();
+  return !['-','—','–','－','na','n/a','none','未測','未檢','未檢測','無'].includes(normalized);
+}
+
+function toFiniteNumber(v) {
+  if (!isMeaningfulHealthValue(v)) return null;
+  const raw = String(v).trim();
+  if (/^[-—–－]+$/.test(raw)) return null;
+  const n = parseFloat(raw.replace(/,/g,''));
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeHealthInputValue(v) {
+  if (v == null) return '';
+  const s = String(v).trim();
+  if (!s) return '';
+  const normalized = s.replace(/\s+/g, '').toLowerCase();
+  if (['-','—','–','－','na','n/a','none','未測','未檢','未檢測','無'].includes(normalized)) return '-';
+  return s;
+}
+
+function healthRecordCompleteness(rec) {
+  let count = 0;
+  Object.entries(rec || {}).forEach(([k, v]) => {
+    if (['id','date','note','sourceId','source'].includes(k)) return;
+    if (isMeaningfulHealthValue(v)) count += 1;
+  });
+  return count;
+}
+
+function getHealthLocalCache() {
+  try { return JSON.parse(localStorage.getItem(HEALTH_LOCAL_CACHE_KEY) || '{}'); } catch(e) { return {}; }
+}
+
+function setHealthLocalCache(cache) {
+  try { localStorage.setItem(HEALTH_LOCAL_CACHE_KEY, JSON.stringify(cache)); } catch(e) {}
+}
+
+function normalizeHealthRecordForStorage(rec) {
+  const out = {};
+  Object.entries(rec || {}).forEach(([k, v]) => {
+    if (k === 'date') out[k] = normalizeDateString(v);
+    else if (k === 'savedAt') out[k] = v || new Date().toISOString();
+    else out[k] = normalizeHealthInputValue(v);
+  });
+  return out;
+}
+
+function mergeHealthRecordPreferLocal(cloudRec, localRec) {
+  const merged = { ...(cloudRec || {}) };
+  Object.entries(localRec || {}).forEach(([k, v]) => {
+    if (k === 'savedAt') return;
+    if (k === 'date' && normalizeDateString(v)) {
+      merged[k] = normalizeDateString(v);
+      return;
+    }
+    if (k === 'note') {
+      if (String(v || '').trim()) merged[k] = v;
+      return;
+    }
+    if (isMeaningfulHealthValue(v)) {
+      merged[k] = normalizeHealthInputValue(v);
+    } else if (!(k in merged)) {
+      merged[k] = normalizeHealthInputValue(v);
+    }
+  });
+  if (localRec?.savedAt) merged.savedAt = localRec.savedAt;
+  return merged;
+}
+
+function saveHealthLocalBackup(rec) {
+  if (!rec || !rec.id) return;
+  const cache = getHealthLocalCache();
+  cache[String(rec.id)] = { ...normalizeHealthRecordForStorage(rec), savedAt: new Date().toISOString() };
+  setHealthLocalCache(cache);
+}
+
+function removeHealthLocalBackup(id) {
+  const cache = getHealthLocalCache();
+  delete cache[String(id)];
+  setHealthLocalCache(cache);
+}
+
+function mergeHealthWithLocalCache(records) {
+  const cache = getHealthLocalCache();
+  const map = new Map();
+  (records || []).forEach(rec => map.set(String(rec.id), normalizeHealthRecordForStorage(rec)));
+  Object.values(cache).forEach(localRecRaw => {
+    const localRec = normalizeHealthRecordForStorage(localRecRaw);
+    const id = String(localRec.id || '');
+    if (!id) return;
+    const cloudRec = map.get(id);
+    if (!cloudRec) {
+      map.set(id, { ...localRecRaw, ...localRec });
+      return;
+    }
+    map.set(id, mergeHealthRecordPreferLocal(cloudRec, { ...localRecRaw, ...localRec }));
+  });
+  return Array.from(map.values()).sort((a,b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')));
+}
+
+function getHealthAbnormalEntries(rec) {
+  const out = [];
+  Object.entries(HEALTH_RANGES).forEach(([key, range]) => {
+    const n = toFiniteNumber(rec[key]);
+    if (n == null) return;
+    const label = HEALTH_LABEL_MAP[key] || (HEALTH_FIELDS.find(f => f.key === key)?.label) || key.toUpperCase();
+    const [min, max] = range;
+    if (min != null && n < min) out.push({ key, label, value:n, status:'low', text:`${label} 偏低（${n}）` });
+    if (max != null && n > max) out.push({ key, label, value:n, status:'high', text:`${label} 偏高（${n}）` });
+  });
+  return out;
+}
+
+function getHealthAbnormalSummaryHtml(rec) {
+  const abnormal = getHealthAbnormalEntries(rec);
+  if (!abnormal.length) return '';
+  return `<div class="health-abnormal-summary"><div class="abn-title">異常提醒</div>${abnormal.map(a => `<div class="abn-item">• ${a.text}</div>`).join('')}</div>`;
+}
+
+function openHealthDetail(id) {
+  const rec = (db.health || []).find(r => String(r.id) === String(id));
+  if (!rec) return showToast('找不到這筆健檢紀錄', true);
+  const body = document.getElementById('healthDetailBody');
+  const abnormalKeys = new Set(getHealthAbnormalEntries(rec).map(a => a.key));
+  const meta = [
+    rec.date ? `<div class="health-detail-pill"><strong>日期</strong><br>${formatDisplayDate(rec.date)}</div>` : '',
+    isMeaningfulHealthValue(rec.weight) ? `<div class="health-detail-pill"><strong>體重</strong><br>${rec.weight} kg</div>` : '',
+    isMeaningfulHealthValue(rec.cost) ? `<div class="health-detail-pill"><strong>費用</strong><br>NT$ ${Number(rec.cost).toLocaleString()}</div>` : ''
+  ].join('');
+  const sectionsHtml = HEALTH_FIELD_SECTIONS.map(section => {
+    const cells = section.fields
+      .filter(f => isMeaningfulHealthValue(rec[f.key]))
+      .map(f => {
+        const range = HEALTH_RANGES[f.key];
+        const rangeText = range ? `${range[0] != null ? range[0] : '≤'}${(range[0] != null && range[1] != null) ? ' - ' : ''}${range[1] != null ? range[1] : ''}` : '';
+        return `<div class="health-detail-item ${abnormalKeys.has(f.key) ? 'abnormal' : ''}">
+        <div class="k">${f.label}${rangeText ? `<div style="font-size:.68rem;color:var(--text-soft);margin-top:2px">參考值：${rangeText}</div>` : ''}</div>
+        <div class="v">${rec[f.key]}</div>
+      </div>`;
+      }).join('');
+    if (!cells) return '';
+    return `<div class="health-detail-section">
+      <div class="index-section-title">${section.title}</div>
+      <div class="health-detail-grid">${cells}</div>
+    </div>`;
+  }).join('');
+  body.innerHTML = `
+    <div class="health-detail-meta">${meta}</div>
+    ${getHealthAbnormalSummaryHtml(rec)}
+    ${rec.note ? `<div class="card" style="padding:14px 16px;margin:14px 0 18px"><div style="font-size:.78rem;color:var(--text-soft);margin-bottom:6px">備註</div><div style="line-height:1.8">${rec.note}</div></div>` : ''}
+    ${sectionsHtml || '<div class="empty-state"><p>這次健檢沒有可顯示的數值</p></div>'}
+  `;
+  openModal('healthDetailModal');
+}
+
 function normalizeRecordIds() {
   ['vet','health','bath','weight','diet','vaccine','reminders','supplies'].forEach(sheet => {
-    db[sheet] = (db[sheet] || []).map(r => ({
-      ...r,
-      id: (r?.id ?? '') === '' ? `${Date.now()}${Math.floor(Math.random()*1000)}` : String(r.id),
-      sourceId: r?.sourceId == null ? r?.sourceId : String(r.sourceId)
-    }));
+    dedupeSheetRecords(sheet);
   });
 }
 
 function normalizeDbDates() {
   normalizeRecordIds();
-  ['vet','health','bath','weight','diet','vaccine','reminders','supplies'].forEach(sheet => {
+  ['vet','bath','weight','diet','vaccine','reminders','supplies'].forEach(sheet => {
     db[sheet] = (db[sheet] || []).map(r => ({ ...r, date: normalizeDateString(r.date) }));
+    dedupeSheetRecords(sheet);
   });
+  db.health = (db.health || []).map(r => normalizeHealthRecordForStorage({ ...r, date: normalizeDateString(r.date) }));
+  dedupeSheetRecords('health');
   if (db.profile?.birthday) db.profile.birthday = normalizeDateString(db.profile.birthday);
 }
 
@@ -1238,7 +1519,7 @@ async function syncAllFromCloud(showStatus = false) {
     ]);
     db.profile = (profile && profile[0]) ? profile[0] : {};
     db.vet = vet || [];
-    db.health = health || [];
+    db.health = mergeHealthWithLocalCache(health || []);
     db.bath = bath || [];
     db.weight = weight || [];
     db.diet = diet || [];
@@ -1274,6 +1555,17 @@ async function apiWrite(sheet, data) {
   });
   const j = await r.json();
   if (!j.ok) throw new Error(j.error || '儲存失敗');
+  return j;
+}
+
+async function apiUpdate(sheet, id, data) {
+  const pwd = sessionStorage.getItem(ADMIN_KEY);
+  const r = await fetch(API_URL, {
+    method:'POST',
+    body: JSON.stringify({ action:'update', sheet, id, data, password: pwd })
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || '更新失敗');
   return j;
 }
 
@@ -1405,7 +1697,7 @@ function switchTab(name) {
 function openModal(id) {
   document.getElementById(id).classList.add('open');
   document.body.classList.add('modal-open');
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalTodayString();
   const d = document.querySelector(`#${id} input[type=date]`);
   if (d && !d.value) d.value = today;
   if (id === 'healthModal') restoreHealthDraft();
@@ -1560,18 +1852,20 @@ function updateHeader() {
 function updateProfileStats() {
   const bday = db.profile?.birthday;
   if(bday) {
-    const days = Math.floor((new Date()-new Date(bday))/86400000);
+    const days = daysBetweenToday(bday);
     document.getElementById('statAge').textContent = days.toLocaleString();
     const y=Math.floor(days/365), m=Math.floor((days%365)/30);
     document.getElementById('statAgeYear').textContent = `${y}歲${m}月`;
   }
   if(db.vet.length) {
     const last = [...db.vet].sort((a,b)=>b.date.localeCompare(a.date))[0];
-    document.getElementById('statLastVet').textContent = Math.floor((new Date()-new Date(last.date))/86400000)+'天前';
+    const vetDays = daysBetweenToday(last.date);
+    document.getElementById('statLastVet').textContent = vetDays != null ? vetDays + '天前' : '—';
   }
   if(db.bath.length) {
     const last = [...db.bath].sort((a,b)=>b.date.localeCompare(a.date))[0];
-    document.getElementById('statLastBath').textContent = Math.floor((new Date()-new Date(last.date))/86400000)+'天前';
+    const bathDays = daysBetweenToday(last.date);
+    document.getElementById('statLastBath').textContent = bathDays != null ? bathDays + '天前' : '—';
   }
   if(db.weight.length) {
     const last = [...db.weight].sort((a,b)=>b.date.localeCompare(a.date))[0];
@@ -1621,7 +1915,7 @@ function exportBackup() {
   const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  const d = new Date().toISOString().slice(0,10);
+  const d = getLocalTodayString();
   a.download = `Ruki日誌備份_${d}.json`;
   a.click();
   showToast('✓ 備份檔案已下載');
@@ -1701,40 +1995,38 @@ function doSearch(q) {
 async function saveVet() {
   const wasEditing = editState.sheet !== null;
   const checks = getSelectedChips('vetCheckChips');
-  const extra = document.getElementById('vet_extra_check').value;
-  if(extra) checks.push(extra);
+  const extra = document.getElementById('vet_extra_check').value.trim();
+  if (extra) checks.push(extra);
   const rec = {
     id: Date.now().toString(),
-    date: document.getElementById('vet_date').value,
+    date: normalizeDateString(document.getElementById('vet_date').value),
     cost: document.getElementById('vet_cost').value,
     reason: document.getElementById('vet_reason').value,
     diagnosis: document.getElementById('vet_diagnosis').value,
     checks: checks.join('、'),
     medicine: document.getElementById('vet_medicine').value,
-    followup: document.getElementById('vet_followup').value,
+    followup: normalizeDateString(document.getElementById('vet_followup').value),
     doctor: document.getElementById('vet_doctor').value,
     note: document.getElementById('vet_note').value
   };
   const originalId = editState.sheet === 'vet' && editState.id != null ? String(editState.id) : null;
-  if(!rec.date) return showToast('請填入日期', true);
+  if (!rec.date) return showToast('請填入日期', true);
+  if (originalId) rec.id = originalId;
   setBtnLoading('vetSaveBtn', true);
   try {
     setSyncBadge('syncing', '● 儲存中');
-    if (originalId) {
-      await apiDelete('vet', originalId);
-      db.vet = db.vet.filter(r => String(r.id) !== String(originalId));
-      rec.id = originalId;
-    }
-    await apiWrite('vet', rec);
+    if (originalId) await apiUpdate('vet', originalId, rec);
+    else await apiWrite('vet', rec);
+    db.vet = db.vet.filter(r => String(r.id) !== String(rec.id));
     db.vet.push(rec);
 
-    const fallbackReminderMatcher = r => r.type === '🏥 回診' && r.title === '回診：'+(rec.reason||'') && (r.note||'') === (rec.doctor||'');
-    if(rec.followup) {
+    const fallbackReminderMatcher = r => r.type === '🏥 回診' && r.title === '回診：' + (rec.reason || '') && (r.note || '') === (rec.doctor || '');
+    if (rec.followup) {
       const remRec = {
-        title:'回診：'+(rec.reason||''),
-        date:rec.followup,
-        type:'🏥 回診',
-        note:rec.doctor||''
+        title: '回診：' + (rec.reason || ''),
+        date: rec.followup,
+        type: '🏥 回診',
+        note: rec.doctor || ''
       };
       await upsertLinkedReminder('vet', rec.id, remRec, fallbackReminderMatcher);
     } else {
@@ -1747,9 +2039,10 @@ async function saveVet() {
     resetEditState('vetModal', '🏥 新增看診紀錄', 'vetSaveBtn');
     setSyncBadge('ok', '● 已連線');
     showToast(wasEditing ? '✓ 看診紀錄已更新' : '✓ 看診紀錄已儲存');
-  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：' + e.message, true); }
   setBtnLoading('vetSaveBtn', false);
 }
+
 
 function renderVet() {
   const list = document.getElementById('vetList');
@@ -1796,7 +2089,7 @@ let healthChartInst = null;
 
 function renderHealthChartBtns() {
   const btns = document.getElementById('chartBtns');
-  const fields = HEALTH_FIELDS.filter(f => db.health.some(r => r[f.key] !== '' && r[f.key] != null));
+  const fields = HEALTH_FIELDS.filter(f => db.health.some(r => toFiniteNumber(r[f.key]) != null));
   if(!fields.length) { btns.innerHTML='<span style="color:var(--soft);font-size:.8rem">新增健檢資料後可查看趨勢</span>'; return; }
   btns.innerHTML = fields.map(f=>`<button class="btn btn-sm btn-secondary" onclick="renderHealthChart('${f.key}')">${f.label}</button>`).join('');
 }
@@ -1825,11 +2118,13 @@ function renderHealthTable() {
   const wrap = document.getElementById('healthTable');
   if(!db.health.length) { wrap.innerHTML='<p class="no-data" style="padding:16px;color:var(--soft)">尚未有健檢資料</p>'; return; }
   const sorted = [...db.health].sort((a,b)=>b.date.localeCompare(a.date));
-  const shown = HEALTH_FIELDS.filter(f=>sorted.some(r=>r[f.key] !== '' && r[f.key] != null));
+  const shown = HEALTH_FIELDS.filter(f=>sorted.some(r=>isMeaningfulHealthValue(r[f.key])));
   wrap.innerHTML = `<table><thead><tr><th>指標</th>${sorted.map(r=>`<th>${formatDisplayDate(r.date)}</th>`).join('')}</tr></thead><tbody>
     ${shown.map(f=>`<tr><td><strong>${f.label}</strong></td>${sorted.map(r=>{
-      const v=r[f.key]; if(v === '' || v == null) return '<td>—</td>';
-      return `<td>${v}</td>`;
+      const v = r[f.key];
+      if(!isMeaningfulHealthValue(v)) return '<td></td>';
+      const abnormal = getHealthAbnormalEntries(r).some(a => a.key === f.key);
+      return `<td class="${abnormal ? 'hi' : ''}">${v}</td>`;
     }).join('')}</tr>`).join('')}
   </tbody></table>`;
 }
@@ -1837,49 +2132,68 @@ function renderHealthTable() {
 async function saveHealth() {
   const wasEditing = editState.sheet !== null;
   const fields = ['glu','bun','cre','nh3','tcho','tg','tbil','ca','ip','tp','alb','glob','got','gpt','cpk','ldh','amyl','ggt','alp1','alp2','mg','na','k','cl','tco2','lipase','bun_crea','alb_glob','wbc','rbc','hgb','hct','mcv','mch','mchc','rdw','plt','mpv','pct','pdw','lym','mono','gra','eos','t4','tsh','cortisol','bile','fructosamine','cpl','fpl','vsaa'];
+  const originalId = editState.sheet === 'health' && editState.id ? String(editState.id) : null;
   const rec = {
-    id: Date.now().toString(),
-    date: document.getElementById('h_date').value,
+    id: originalId || Date.now().toString(),
+    date: normalizeDateString(document.getElementById('h_date').value),
     cost: getFlexibleFieldValue('h_cost'),
     weight: getFlexibleFieldValue('h_weight'),
-    note: document.getElementById('h_note').value
+    note: document.getElementById('h_note').value.trim()
   };
-  fields.forEach(f => { rec[f] = getFlexibleFieldValue('h_'+f); });
-  if(!rec.date) return showToast('請填入日期', true);
+  fields.forEach(f => { rec[f] = getFlexibleFieldValue('h_' + f); });
+  const normalizedRec = normalizeHealthRecordForStorage({ ...rec, savedAt: new Date().toISOString() });
+  if (!normalizedRec.date) return showToast('請填入日期', true);
+  const hasAnyValue = fields.some(f => isMeaningfulHealthValue(normalizedRec[f])) || isMeaningfulHealthValue(normalizedRec.weight);
+  if (!hasAnyValue) return showToast('請至少填入一個健檢數值', true);
   setBtnLoading('healthSaveBtn', true);
   try {
     setSyncBadge('syncing','● 儲存中');
-    if (editState.sheet === 'health' && editState.id) {
-      await apiDelete('health', editState.id);
-      db.health = db.health.filter(r => r.id !== editState.id);
-      rec.id = editState.id;
-    }
-    await apiWrite('health', rec);
+    saveHealthLocalBackup(normalizedRec);
+    if (originalId) await apiUpdate('health', originalId, normalizedRec);
+    else await apiWrite('health', normalizedRec);
+    db.health = db.health.filter(r => String(r.id) !== String(normalizedRec.id));
+    db.health.push(normalizedRec);
+    db.health = mergeHealthWithLocalCache(db.health);
+    normalizeDbDates();
+    renderHealth(); renderHealthChartBtns(); renderHealthChart(currentHealthField); renderHealthTable();
     await syncAllFromCloud(false);
     clearHealthDraft();
-    renderHealth(); renderHealthChartBtns(); renderHealthChart(currentHealthField); renderHealthTable();
     closeModal('healthModal');
-    document.querySelectorAll('#healthModal input, #healthModal textarea').forEach(el=>el.value='');
+    document.querySelectorAll('#healthModal input, #healthModal textarea').forEach(el => el.value = '');
     resetEditState('healthModal', '📊 新增健康檢查', 'healthSaveBtn');
     setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 健檢紀錄已更新' : '✓ 健檢紀錄已儲存');
-  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：' + e.message, true); }
   setBtnLoading('healthSaveBtn', false);
 }
+
 
 function renderHealth() {
   const list = document.getElementById('healthList');
   if(!db.health.length) { list.innerHTML='<div class="empty-state"><div class="icon">📊</div><p>尚未新增健檢紀錄</p></div>'; return; }
   const sorted = [...db.health].sort((a,b)=>b.date.localeCompare(a.date));
   list.innerHTML = sorted.map(r=>{
-    const badges = HEALTH_FIELDS.filter(f=>f.key!=='weight' && r[f.key] !== '' && r[f.key] != null).map(f=>`<span class="badge badge-green">${f.label}: ${r[f.key]}</span>`).join(' ');
+    const shownBadges = HEALTH_FIELDS
+      .filter(f=>f.key!=='weight' && isMeaningfulHealthValue(r[f.key]))
+      .slice(0, 10)
+      .map(f=>`<span class="badge badge-green">${f.label}: ${r[f.key]}</span>`).join(' ');
+    const hiddenCount = HEALTH_FIELDS.filter(f=>f.key!=='weight' && isMeaningfulHealthValue(r[f.key])).length - 10;
+    const abnormalHtml = getHealthAbnormalSummaryHtml(r);
     return `<div class="record-item">
       <div class="record-date">${formatDisplayDate(r.date)}</div>
       <div class="record-content">
-        <div class="record-title">健康檢查${r.weight?'　<span style="font-family:DM Mono;font-size:.9rem">'+r.weight+' kg</span>':''}</div>
-        <div class="record-detail">${badges}${r.note?'<br>'+r.note:''}</div>
-        ${r.cost?`<div class="record-cost">NT$ ${Number(r.cost).toLocaleString()}</div>`:''}
+        <div class="record-title">健康檢查${isMeaningfulHealthValue(r.weight)?'　<span style="font-family:DM Mono;font-size:.9rem">'+r.weight+' kg</span>':''}</div>
+        <div class="record-detail">
+          ${shownBadges || '<span style="color:var(--soft)">此筆未顯示數值摘要</span>'}
+          ${hiddenCount > 0 ? `<br><span style="color:var(--text-soft);font-size:.75rem">還有 ${hiddenCount} 項數值，請按「查看」</span>` : ''}
+          ${r.note?'<br>'+r.note:''}
+        </div>
+        ${abnormalHtml}
+        ${isMeaningfulHealthValue(r.cost)?`<div class="record-cost">NT$ ${Number(r.cost).toLocaleString()}</div>`:''}
       </div>
-      ${isAdmin?`<div class="record-actions"><button class="btn btn-sm btn-secondary" onclick="editHealth('${r.id}')">編輯</button><button class="btn btn-sm btn-danger" onclick="deleteRec('health','${r.id}')">✕</button></div>`:''}
+      <div class="record-actions">
+        <button class="btn btn-sm btn-secondary" onclick="openHealthDetail('${r.id}')">查看</button>
+        ${isAdmin?`<button class="btn btn-sm btn-secondary" onclick="editHealth('${r.id}')">編輯</button><button class="btn btn-sm btn-danger" onclick="deleteRec('health','${r.id}')">✕</button>`:''}
+      </div>
     </div>`;
   }).join('');
 }
@@ -1890,25 +2204,31 @@ function renderHealth() {
 async function saveBath() {
   const wasEditing = editState.sheet !== null;
   const services = getSelectedChips('bathServiceChips');
-  const rec = { id:Date.now().toString(), date:document.getElementById('bath_date').value, cost:document.getElementById('bath_cost').value, place:document.getElementById('bath_place').value, services:services.join('、'), note:document.getElementById('bath_note').value };
-  if(!rec.date) return showToast('請填入日期', true);
+  const originalId = editState.sheet === 'bath' && editState.id ? String(editState.id) : null;
+  const rec = {
+    id: originalId || Date.now().toString(),
+    date: normalizeDateString(document.getElementById('bath_date').value),
+    cost: document.getElementById('bath_cost').value,
+    place: document.getElementById('bath_place').value,
+    services: services.join('、'),
+    note: document.getElementById('bath_note').value
+  };
+  if (!rec.date) return showToast('請填入日期', true);
   setBtnLoading('bathSaveBtn', true);
   try {
     setSyncBadge('syncing','● 儲存中');
-    if (editState.sheet === 'bath' && editState.id) {
-      await apiDelete('bath', editState.id);
-      db.bath = db.bath.filter(r => r.id !== editState.id);
-      rec.id = editState.id;
-    }
-    await apiWrite('bath', rec);
+    if (originalId) await apiUpdate('bath', originalId, rec);
+    else await apiWrite('bath', rec);
+    db.bath = db.bath.filter(r => String(r.id) !== String(rec.id));
     db.bath.push(rec);
     renderBath(); updateProfileStats(); closeModal('bathModal');
     clearInputs(['bath_date','bath_cost','bath_note']); clearChips('bathServiceChips');
     resetEditState('bathModal', '🛁 新增洗澡紀錄', 'bathSaveBtn');
     setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 洗澡紀錄已更新' : '✓ 洗澡紀錄已儲存');
-  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：' + e.message, true); }
   setBtnLoading('bathSaveBtn', false);
 }
+
 
 function renderBath() {
   const list = document.getElementById('bathList');
@@ -1931,23 +2251,26 @@ function renderBath() {
 // ══════════════════════════════════════════
 async function saveWeight() {
   const wasEditing = editState.sheet !== null;
-  const rec = { id:Date.now().toString(), date:document.getElementById('w_date').value, weight:document.getElementById('w_weight').value, note:document.getElementById('w_note').value };
-  if(!rec.date||!rec.weight) return showToast('請填入日期與體重', true);
+  const originalId = editState.sheet === 'weight' && editState.id ? String(editState.id) : null;
+  const rec = {
+    id: originalId || Date.now().toString(),
+    date: normalizeDateString(document.getElementById('w_date').value),
+    weight: document.getElementById('w_weight').value,
+    note: document.getElementById('w_note').value
+  };
+  if (!rec.date || !rec.weight) return showToast('請填入日期與體重', true);
   setBtnLoading('weightSaveBtn', true);
   try {
     setSyncBadge('syncing','● 儲存中');
-    if (editState.sheet === 'weight' && editState.id) {
-      await apiDelete('weight', editState.id);
-      db.weight = db.weight.filter(r => r.id !== editState.id);
-      rec.id = editState.id;
-    }
-    await apiWrite('weight', rec);
+    if (originalId) await apiUpdate('weight', originalId, rec);
+    else await apiWrite('weight', rec);
+    db.weight = db.weight.filter(r => String(r.id) !== String(rec.id));
     db.weight.push(rec);
     renderWeightList(); renderWeightChart(); updateProfileStats(); closeModal('weightModal');
     clearInputs(['w_date','w_weight','w_note']);
     resetEditState('weightModal', '⚖️ 記錄體重', 'weightSaveBtn');
     setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 體重紀錄已更新' : '✓ 體重已記錄');
-  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：' + e.message, true); }
   setBtnLoading('weightSaveBtn', false);
 }
 
@@ -1991,24 +2314,33 @@ function renderWeightList() {
 // ══════════════════════════════════════════
 async function saveDiet() {
   const wasEditing = editState.sheet !== null;
-  const rec = { id:Date.now().toString(), date:document.getElementById('diet_date').value, water:document.getElementById('diet_water').value, am:document.getElementById('diet_am').value, noon:document.getElementById('diet_noon').value, pm:document.getElementById('diet_pm').value, snack:document.getElementById('diet_snack').value, appetite:document.getElementById('diet_appetite').value, note:document.getElementById('diet_note').value };
-  if(!rec.date) return showToast('請填入日期', true);
+  const originalId = editState.sheet === 'diet' && editState.id ? String(editState.id) : null;
+  const rec = {
+    id: originalId || Date.now().toString(),
+    date: normalizeDateString(document.getElementById('diet_date').value),
+    water: document.getElementById('diet_water').value,
+    am: document.getElementById('diet_am').value,
+    noon: document.getElementById('diet_noon').value,
+    pm: document.getElementById('diet_pm').value,
+    snack: document.getElementById('diet_snack').value,
+    appetite: document.getElementById('diet_appetite').value,
+    note: document.getElementById('diet_note').value
+  };
+  if (!rec.date) return showToast('請填入日期', true);
   setBtnLoading('dietSaveBtn', true);
   try {
     setSyncBadge('syncing','● 儲存中');
-    if (editState.sheet === 'diet' && editState.id) {
-      await apiDelete('diet', editState.id);
-      db.diet = db.diet.filter(r => r.id !== editState.id);
-      rec.id = editState.id;
-    }
-    await apiWrite('diet', rec);
+    if (originalId) await apiUpdate('diet', originalId, rec);
+    else await apiWrite('diet', rec);
+    db.diet = db.diet.filter(r => String(r.id) !== String(rec.id));
     db.diet.push(rec); renderDiet(); closeModal('dietModal');
     clearInputs(['diet_date','diet_water','diet_am','diet_noon','diet_pm','diet_snack','diet_note']);
     resetEditState('dietModal', '🍽️ 新增飲食紀錄', 'dietSaveBtn');
     setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 飲食日誌已更新' : '✓ 飲食日誌已儲存');
-  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：' + e.message, true); }
   setBtnLoading('dietSaveBtn', false);
 }
+
 
 function renderDiet() {
   const list = document.getElementById('dietList');
@@ -2032,23 +2364,28 @@ function renderDiet() {
 // ══════════════════════════════════════════
 async function saveVaccine() {
   const wasEditing = editState.sheet !== null;
-  const rec = { id:Date.now().toString(), date:document.getElementById('vac_date').value, cost:document.getElementById('vac_cost').value, type:document.getElementById('vac_type').value, brand:document.getElementById('vac_brand').value, next:document.getElementById('vac_next').value, note:document.getElementById('vac_note').value };
-  const originalId = editState.sheet === 'vaccine' ? editState.id : null;
-  if(!rec.date) return showToast('請填入日期', true);
+  const originalId = editState.sheet === 'vaccine' && editState.id ? String(editState.id) : null;
+  const rec = {
+    id: originalId || Date.now().toString(),
+    date: normalizeDateString(document.getElementById('vac_date').value),
+    cost: document.getElementById('vac_cost').value,
+    type: document.getElementById('vac_type').value,
+    brand: document.getElementById('vac_brand').value,
+    next: normalizeDateString(document.getElementById('vac_next').value),
+    note: document.getElementById('vac_note').value
+  };
+  if (!rec.date) return showToast('請填入日期', true);
   setBtnLoading('vaccineSaveBtn', true);
   (async()=>{
     try {
       setSyncBadge('syncing','● 儲存中');
-      if (originalId) {
-        await apiDelete('vaccine', originalId);
-        db.vaccine = db.vaccine.filter(r => r.id !== originalId);
-        rec.id = originalId;
-      }
-      await apiWrite('vaccine', rec);
+      if (originalId) await apiUpdate('vaccine', originalId, rec);
+      else await apiWrite('vaccine', rec);
+      db.vaccine = db.vaccine.filter(r => String(r.id) !== String(rec.id));
       db.vaccine.push(rec);
-      const fallbackReminderMatcher = r => ['💉 疫苗','🐛 驅蟲'].includes(r.type) && r.title === rec.type+'到期' && (r.note||'') === (rec.brand||'');
-      if(rec.next) {
-        const remRec = { title:rec.type+'到期', date:rec.next, type: rec.type?.includes('驅') ? '🐛 驅蟲' : '💉 疫苗', note:rec.brand||'' };
+      const fallbackReminderMatcher = r => ['💉 疫苗','🐛 驅蟲'].includes(r.type) && r.title === rec.type + '到期' && (r.note || '') === (rec.brand || '');
+      if (rec.next) {
+        const remRec = { title: rec.type + '到期', date: rec.next, type: rec.type?.includes('驅') ? '🐛 驅蟲' : '💉 疫苗', note: rec.brand || '' };
         await upsertLinkedReminder('vaccine', rec.id, remRec, fallbackReminderMatcher);
       } else {
         await deleteLinkedReminder('vaccine', rec.id, fallbackReminderMatcher);
@@ -2057,10 +2394,11 @@ async function saveVaccine() {
       clearInputs(['vac_date','vac_cost','vac_brand','vac_next','vac_note']);
       resetEditState('vaccineModal', '💉 新增疫苗 / 驅蟲', 'vaccineSaveBtn');
       setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 疫苗紀錄已更新' : '✓ 疫苗紀錄已儲存');
-    } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+    } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：' + e.message, true); }
     setBtnLoading('vaccineSaveBtn', false);
   })();
 }
+
 
 function renderVaccine() {
   const list = document.getElementById('vaccineList');
@@ -2083,32 +2421,37 @@ function renderVaccine() {
 // ══════════════════════════════════════════
 async function saveReminder() {
   const wasEditing = editState.sheet !== null;
-  const rec = { id:Date.now().toString(), title:document.getElementById('rem_title').value, date:document.getElementById('rem_date').value, type:document.getElementById('rem_type').value, note:document.getElementById('rem_note').value };
-  if(!rec.title||!rec.date) return showToast('請填入標題與日期', true);
+  const originalId = editState.sheet === 'reminders' && editState.id ? String(editState.id) : null;
+  const rec = {
+    id: originalId || Date.now().toString(),
+    title: document.getElementById('rem_title').value,
+    date: normalizeDateString(document.getElementById('rem_date').value),
+    type: document.getElementById('rem_type').value,
+    note: document.getElementById('rem_note').value
+  };
+  if (!rec.title || !rec.date) return showToast('請填入標題與日期', true);
   setBtnLoading('reminderSaveBtn', true);
   try {
     setSyncBadge('syncing','● 儲存中');
-    if (editState.sheet === 'reminders' && editState.id) {
-      await apiDelete('reminders', editState.id);
-      db.reminders = db.reminders.filter(r => r.id !== editState.id);
-      rec.id = editState.id;
-    }
-    await apiWrite('reminders', rec);
+    if (originalId) await apiUpdate('reminders', originalId, rec);
+    else await apiWrite('reminders', rec);
+    db.reminders = db.reminders.filter(r => String(r.id) !== String(rec.id));
     db.reminders.push(rec); renderReminders(); closeModal('reminderModal');
     clearInputs(['rem_title','rem_date','rem_note']);
     resetEditState('reminderModal', '🔔 新增提醒', 'reminderSaveBtn');
     setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 提醒已更新' : '✓ 提醒已設定');
-  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：' + e.message, true); }
   setBtnLoading('reminderSaveBtn', false);
 }
+
 
 function renderReminders() {
   const list = document.getElementById('reminderList');
   if(!db.reminders.length) { list.innerHTML='<div class="empty-state"><div class="icon">🔔</div><p>尚未設定提醒</p></div>'; return; }
-  const today = new Date(); today.setHours(0,0,0,0);
+  const today = parseLocalDateOnly(getLocalTodayString());
   const sorted = [...db.reminders].sort((a,b)=>a.date.localeCompare(b.date));
   list.innerHTML = sorted.map(r=>{
-    const rd = new Date(r.date); rd.setHours(0,0,0,0);
+    const rd = new Date(normalizeDateString(r.date) + 'T00:00:00'); rd.setHours(0,0,0,0);
     const diff = Math.round((rd-today)/86400000);
     const cls = diff===0?'today':diff<0?'past':'upcoming';
     const daysText = diff===0?'📣 今天！':diff<0?`已過 ${-diff} 天`:`${diff} 天後`;
@@ -2259,6 +2602,9 @@ async function deleteRec(sheet, id) {
       if (sheet === 'vaccine') {
         await deleteLinkedReminder('vaccine', targetId, r => ['💉 疫苗','🐛 驅蟲'].includes(r.type) && String(r.sourceId) === targetId);
       }
+      if (sheet === 'health') {
+        removeHealthLocalBackup(targetId);
+      }
       const renders = { vet:renderVet, health:renderHealth, bath:renderBath, weight:renderWeightList, diet:renderDiet, vaccine:renderVaccine, reminders:renderReminders, supplies:()=>{renderSupplies();renderSuppliesChart();} };
       if(renders[sheet]) renders[sheet]();
       renderReminders();
@@ -2391,9 +2737,10 @@ function clearSupplyItems() {
 async function saveSupply() {
   const wasEditing = editState.sheet !== null;
   const items = getSupplyItemsData();
+  const originalId = editState.sheet === 'supplies' && editState.id ? String(editState.id) : null;
   const rec = {
-    id: Date.now().toString(),
-    date: document.getElementById('sup_date').value,
+    id: originalId || Date.now().toString(),
+    date: normalizeDateString(document.getElementById('sup_date').value),
     cat: document.getElementById('sup_cat').value,
     name: document.getElementById('sup_name').value,
     items: JSON.stringify(items),
@@ -2403,17 +2750,14 @@ async function saveSupply() {
     rating: document.getElementById('sup_rating').value,
     note: document.getElementById('sup_note').value
   };
-  if(!rec.date) return showToast('請填入日期', true);
-  if(!rec.name) return showToast('請填入商品名稱', true);
+  if (!rec.date) return showToast('請填入日期', true);
+  if (!rec.name) return showToast('請填入商品名稱', true);
   setBtnLoading('suppliesSaveBtn', true);
   try {
     setSyncBadge('syncing','● 儲存中');
-    if (editState.sheet === 'supplies' && editState.id) {
-      await apiDelete('supplies', editState.id);
-      db.supplies = db.supplies.filter(r => r.id !== editState.id);
-      rec.id = editState.id;
-    }
-    await apiWrite('supplies', rec);
+    if (originalId) await apiUpdate('supplies', originalId, rec);
+    else await apiWrite('supplies', rec);
+    db.supplies = db.supplies.filter(r => String(r.id) !== String(rec.id));
     db.supplies.push(rec);
     renderSupplies(); renderSuppliesChart(); updateCostStats();
     closeModal('suppliesModal');
@@ -2423,9 +2767,10 @@ async function saveSupply() {
     clearSupplyItems();
     resetEditState('suppliesModal', '🛍️ 新增用品購買', 'suppliesSaveBtn');
     setSyncBadge('ok','● 已連線'); showToast(wasEditing ? '✓ 用品紀錄已更新' : '✓ 用品紀錄已儲存');
-  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：'+e.message,true); }
+  } catch(e) { setSyncBadge('error','● 儲存失敗'); showToast('儲存失敗：' + e.message, true); }
   setBtnLoading('suppliesSaveBtn', false);
 }
+
 
 function filterSupplies(cat, btn) {
   currentSupplyFilter = cat;
@@ -2524,7 +2869,7 @@ function renderSuppliesChart() {
       cursor.setMonth(cursor.getMonth() + 1);
     }
   } else {
-    months = [new Date().toISOString().slice(0,7)];
+    months = [getLocalTodayString().slice(0,7)];
   }
 
   const labels = months.map(m=>m.replace('-','/'));
